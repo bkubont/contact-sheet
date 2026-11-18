@@ -13,3 +13,8 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Offline + Home Screen install (only on a real web address, not in previews or dev).
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !import.meta.env.DEV) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}

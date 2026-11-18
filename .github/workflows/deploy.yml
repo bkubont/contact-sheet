@@ -1,0 +1,41 @@
+# Builds the Canopy Clients app and publishes the finished files to the `deploy` branch.
+# Point Hostinger's Git deployment at the `deploy` branch: it then serves the built app.
+name: Build for Hostinger
+
+on:
+  push:
+    branches: [main, claude/zen-hypatia-6nyh7z]
+    paths: ['app/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install and build
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+      - name: Publish to the deploy branch
+        working-directory: app/dist
+        run: |
+          git init -q -b deploy
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Build ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" deploy
