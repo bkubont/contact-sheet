@@ -14,8 +14,8 @@ npm run build:preview  # single-file build → app/preview-dist/index.html
 ## Milestones
 1. **People & customer cards** ✅: tree-service tags, properties with hazards/access, timeline, import, Today basics
 2. **Job calendar** ✅: estimates + jobs, day/week, multi-day, crew & equipment, double-booking warnings
-3. Accounts, cloud sync & Quo texting: send/receive from your Quo number, import Quo contacts
-4. Smart lists, follow-ups, tag editor
+3. Accounts, cloud sync & Quo texting (waiting on a backend choice: Supabase slot or Hostinger PHP/MySQL)
+4. **Smart lists, follow-ups, tag editor** ✅
 5. Printouts (crew job sheet, estimate route, labels) and deploy to Hostinger
 
 ## Layout

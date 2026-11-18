@@ -1,5 +1,6 @@
 import { jobsOn, stageOf, useDb } from '../lib/store';
-import { addDays, today } from '../lib/dates';
+import { addDays, fmtDay, today } from '../lib/dates';
+import { customerFacts, runList } from '../lib/lists';
 import { JobRow } from './Calendar';
 import { displayName, timeAgo } from '../lib/util';
 import type { Customer } from '../types';
@@ -14,6 +15,9 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
   const t = today();
   const todays = jobsOn(t, db);
   const tomorrows = jobsOn(addDays(t, 1), db);
+  const facts = customerFacts(db);
+  const pinned = db.smartLists.filter((l) => l.pinned).map((l) => ({ l, n: runList(l, db, facts).length }));
+  const followUps = db.customers.filter((c) => c.followUp && c.followUp.date <= t).sort((a, b) => a.followUp!.date.localeCompare(b.followUp!.date));
   const newLeads = byStage('stage-new');
   const estSet = byStage('stage-est-set');
   const cold = byStage('stage-est-sent').filter((c) => Date.now() - lastStageChange(c) > 7 * 86400000);
@@ -45,7 +49,7 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
         <div className="muted" style={{ fontWeight: 600 }}>{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <div className="head-row"><h1 className="title">Today</h1></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {[['On today', todays.length, false], ['New leads', newLeads.length, false], ['Going cold', cold.length, cold.length > 0]].map(([label, n, hot]) => (
+          {[['On today', todays.length, false], ['Follow-ups', followUps.length, followUps.length > 0], ['New leads', newLeads.length, false]].map(([label, n, hot]) => (
             <div key={label as string} style={{ background: hot ? 'var(--action)' : 'rgba(255,255,255,.12)', borderRadius: 10, padding: '8px 10px' }}>
               <div style={{ font: '800 30px/1 var(--font-display)' }}>{n as number}</div>
               <div style={{ fontSize: 13, opacity: .85 }}>{label as string}</div>
@@ -69,11 +73,20 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
                 : <p className="muted" style={{ margin: '0 2px' }}>Nothing scheduled today.</p>}
               {tomorrows.length > 0 && <p className="muted" style={{ margin: '2px 2px 0' }}>Tomorrow: {tomorrows.length} {tomorrows.length === 1 ? 'visit' : 'visits'} scheduled.</p>}
             </section>
+            <Section title="Follow-ups due" list={followUps} empty="No follow-ups due. Set one from any customer's card." hint={(c) => `${c.followUp!.date < t ? `Overdue since ${fmtDay(c.followUp!.date)}` : 'Today'} · ${c.followUp!.note}`} />
+            {pinned.length > 0 && (
+              <section style={{ display: 'grid', gap: 6 }}>
+                <div className="section-head"><span className="eyebrow">Pinned lists</span><button className="link" onClick={() => onGo('lists')}>All lists ›</button></div>
+                <div className="chips wrap">
+                  {pinned.map(({ l, n }) => <button key={l.id} className="chip big" onClick={() => onGo(`l-${l.id}`)}>{l.name}<span className={n ? 'n hot' : 'n'}>{n}</span></button>)}
+                </div>
+              </section>
+            )}
             <Section title="Estimates going cold" list={cold} empty="Nothing going cold. Estimates sent more than 7 days ago show up here." hint={(c) => `Estimate sent ${timeAgo(lastStageChange(c))}`} />
             <Section title="New leads to call back" list={newLeads} empty="No new leads waiting." hint={(c) => c.properties[0]?.address || c.phones[0]?.value || ''} />
             <Section title="Estimates set" list={estSet} empty="No estimates set." hint={(c) => c.properties[0]?.address || ''} />
             <Section title="Waiting on a yes" list={waiting} empty="No estimates out." hint={(c) => `Sent ${timeAgo(lastStageChange(c))}`} />
-            <div className="soon"><h3>Coming to Today</h3><p>Texts owed and new replies from Quo (milestone 3), and pinned smart lists (milestone 4).</p></div>
+            <div className="soon"><h3>Coming to Today</h3><p>Texts owed and new replies from Quo, once the Quo connection is set up.</p></div>
           </>
         )}
       </div>

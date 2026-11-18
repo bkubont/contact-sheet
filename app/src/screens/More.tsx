@@ -3,6 +3,7 @@ import { clearSamples, getDb, importCustomers, loadSamples, replaceDb, stageGrou
 import { parseContactFile } from '../lib/importers';
 import { Sheet, askConfirm, toast } from '../lib/ui';
 import type { Customer, Db } from '../types';
+import { GroupEditor, NewGroup } from './TagEditor';
 
 export default function More() {
   const db = useDb();
@@ -10,6 +11,8 @@ export default function More() {
   const restoreRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ name: string; list: Customer[] } | null>(null);
   const [stageId, setStageId] = useState('stage-past');
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [newGroup, setNewGroup] = useState(false);
   const sampleCount = db.customers.filter((c) => c.sample).length;
   const sg = stageGroup(db);
 
@@ -74,14 +77,14 @@ export default function More() {
         <section className="menu">
           <div className="eyebrow">Tags</div>
           {db.tagGroups.map((g) => (
-            <div key={g.id} className="prop" style={{ gap: 6 }}>
-              <div className="section-head"><b>{g.name}</b><span className="muted" style={{ fontSize: 13 }}>{g.pipeline ? 'Pipeline · pick one' : g.mode === 'one' ? 'Pick one' : 'Pick many'}</span></div>
-              <div className="chips" style={{ flexWrap: 'wrap', margin: 0, padding: 0 }}>
+            <button key={g.id} className="prop" style={{ gap: 6, textAlign: 'left', width: '100%', font: 'inherit', color: 'inherit' }} onClick={() => setGroupId(g.id)}>
+              <div className="section-head"><b>{g.name}</b><span className="link" style={{ padding: 0 }}>Edit ›</span></div>
+              <div className="chips wrap">
                 {g.tags.map((t) => <span key={t.id} className="chip">{t.color && <i style={{ background: t.color }} />}{t.name}</span>)}
               </div>
-            </div>
+            </button>
           ))}
-          <p className="muted" style={{ margin: 0, fontSize: 14.5 }}>Renaming, recoloring and adding tag groups comes with smart lists in milestone 4.</p>
+          <button className="btn ghost" onClick={() => setNewGroup(true)}>+ New tag group</button>
         </section>
 
         <section className="menu">
@@ -97,6 +100,8 @@ export default function More() {
       <input ref={fileRef} type="file" hidden accept=".vcf,.vcard,.csv,text/vcard,text/x-vcard,text/csv" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
       <input ref={restoreRef} type="file" hidden accept=".json,application/json" onChange={(e) => { restore(e.target.files?.[0]); e.target.value = ''; }} />
 
+      {groupId && <GroupEditor groupId={groupId} onClose={() => setGroupId(null)} />}
+      {newGroup && <NewGroup onClose={() => setNewGroup(false)} onCreated={(id) => { setNewGroup(false); setGroupId(id); }} />}
       {pending && (
         <Sheet title="Import" onClose={() => setPending(null)}>
           <div className="sheet-body">

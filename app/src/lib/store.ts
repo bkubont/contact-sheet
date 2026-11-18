@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import type { Activity, ActivityType, Customer, Db, Job, TagGroup } from '../types';
+import type { Activity, ActivityType, Customer, Db, FollowUp, Job, SmartList, Tag, TagGroup } from '../types';
+import { starterSmartLists } from './lists';
 import { starterTagGroups, sampleCustomers, sampleJobs } from './starter';
-import { addDays, fmtDay, fmtTime, toMinutes } from './dates';
+import { addDays, fmtDay, fmtTime, today, toMinutes } from './dates';
 import { uid } from './util';
 
 // Local-first store: the whole database lives on the device (localStorage) so the app
@@ -15,6 +16,7 @@ function fresh(): Db {
     tagGroups: starterTagGroups(),
     activities: [],
     jobs: [],
+    smartLists: starterSmartLists(),
     settings: {
       businessName: 'Advanced Tree Service', yourName: '',
       crew: ['Me', 'Helper 1', 'Helper 2'],
@@ -24,13 +26,26 @@ function fresh(): Db {
   };
 }
 
+// Bring data saved by an older version up to date without losing anything.
+function migrate(d: Db): Db {
+  const flags = d.tagGroups.find((g) => g.id === 'flags');
+  if (flags && !flags.tags.some((t) => t.id === 'flags-review-asked')) {
+    const at = flags.tags.findIndex((t) => t.id === 'flags-do-not-text');
+    const tags = [...flags.tags];
+    tags.splice(at < 0 ? tags.length : at, 0, { id: 'flags-review-asked', name: 'Review asked' });
+    d = { ...d, tagGroups: d.tagGroups.map((g) => (g.id === 'flags' ? { ...g, tags } : g)) };
+  }
+  if (!Array.isArray(d.smartLists)) d = { ...d, smartLists: starterSmartLists() };
+  return d;
+}
+
 function load(): Db {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const saved = JSON.parse(raw);
       const base = fresh();
-      return { ...base, ...saved, settings: { ...base.settings, ...saved.settings } };
+      return migrate({ ...base, ...saved, settings: { ...base.settings, ...saved.settings } });
     }
   } catch (e) {
     console.warn('Could not read saved data', e);
@@ -123,7 +138,10 @@ export function toggleTag(customerId: string, tagId: string) {
     } else {
       if (group.mode === 'one') tagIds = tagIds.filter((t) => !group.tags.some((gt) => gt.id === t));
       tagIds = [...tagIds, tagId];
-      if (group.pipeline) acts.push(activity(c.id, 'stage', `Stage → ${tag.name}`));
+      if (group.pipeline) {
+        acts.push(activity(c.id, 'stage', `Stage → ${tag.name}`));
+        return stageAutomation({ ...c, tagIds, updatedAt: Date.now() }, tagId, acts);
+      }
     }
     return { ...c, tagIds, updatedAt: Date.now() };
   });
@@ -247,10 +265,12 @@ function advanceStage(d: Db, customerId: string, stageId: string, why: string): 
   const current = sg.tags.find((t) => c.tagIds.includes(t.id));
   if (current && STAGE_ORDER.indexOf(current.id) >= STAGE_ORDER.indexOf(stageId)) return d;
   const tagIds = [...c.tagIds.filter((t) => !sg.tags.some((x) => x.id === t)), stageId];
+  const acts = [activity(customerId, 'stage', `Stage → ${tag.name} (${why})`)];
+  const updated = stageAutomation({ ...c, tagIds, updatedAt: Date.now() }, stageId, acts);
   return {
     ...d,
-    customers: d.customers.map((x) => (x.id === customerId ? { ...x, tagIds, updatedAt: Date.now() } : x)),
-    activities: [...d.activities, activity(customerId, 'stage', `Stage → ${tag.name} (${why})`)],
+    customers: d.customers.map((x) => (x.id === customerId ? updated : x)),
+    activities: [...d.activities, ...acts],
   };
 }
 
@@ -281,4 +301,128 @@ export function setJobStatus(id: string, status: Job['status']) {
 
 export function deleteJob(id: string) {
   commit({ ...db, jobs: db.jobs.filter((j) => j.id !== id) });
+}
+
+// ---------- follow-ups ----------
+
+// Automations that run when a customer's stage changes.
+function stageAutomation(c: Customer, stageId: string, acts: Activity[]): Customer {
+  let followUp = c.followUp;
+  if (followUp?.auto) followUp = undefined; // the old automatic reminder no longer applies
+  const set = (days: number, note: string) => {
+    if (followUp) return; // never overwrite one you set yourself
+    followUp = { date: addDays(today(), days), note, auto: true };
+    acts.push(activity(c.id, 'note', `Follow-up set for ${fmtDay(followUp.date)}: ${note}`));
+  };
+  if (stageId === 'stage-est-sent') set(5, 'Any questions on the estimate?');
+  if (stageId === 'stage-complete') set(1, 'Ask for a review');
+  return { ...c, followUp };
+}
+
+export function setFollowUp(customerId: string, followUp: FollowUp | undefined, logText?: string) {
+  commit({
+    ...db,
+    customers: db.customers.map((c) => (c.id === customerId ? { ...c, followUp, updatedAt: Date.now() } : c)),
+    activities: logText ? [...db.activities, activity(customerId, 'note', logText)] : db.activities,
+  });
+}
+
+// ---------- smart lists ----------
+
+export function saveSmartList(l: SmartList) {
+  const next = { ...l, updatedAt: Date.now() };
+  const exists = db.smartLists.some((x) => x.id === l.id);
+  commit({ ...db, smartLists: exists ? db.smartLists.map((x) => (x.id === l.id ? next : x)) : [...db.smartLists, next] });
+}
+
+export function deleteSmartList(id: string) {
+  commit({ ...db, smartLists: db.smartLists.filter((x) => x.id !== id) });
+}
+
+export function bulkTag(customerIds: string[], tagId: string, add: boolean) {
+  const found = tagById(tagId);
+  if (!found) return;
+  const ids = new Set(customerIds);
+  commit({
+    ...db,
+    customers: db.customers.map((c) => {
+      if (!ids.has(c.id)) return c;
+      let tagIds = c.tagIds.filter((t) => t !== tagId);
+      if (add) {
+        if (found.group.mode === 'one') tagIds = tagIds.filter((t) => !found.group.tags.some((x) => x.id === t));
+        tagIds = [...tagIds, tagId];
+      }
+      return { ...c, tagIds, updatedAt: Date.now() };
+    }),
+  });
+}
+
+// ---------- tag editor ----------
+
+function patchGroup(groupId: string, fn: (g: TagGroup) => TagGroup) {
+  commit({ ...db, tagGroups: db.tagGroups.map((g) => (g.id === groupId ? { ...fn(g), updatedAt: Date.now() } : g)) });
+}
+
+export function renameGroup(groupId: string, name: string) {
+  if (name.trim()) patchGroup(groupId, (g) => ({ ...g, name: name.trim() }));
+}
+
+export function addTag(groupId: string, name: string, color?: string): Tag | undefined {
+  const g = db.tagGroups.find((x) => x.id === groupId);
+  if (!g || !name.trim() || g.tags.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())) return undefined;
+  const tag: Tag = { id: `${groupId}-${uid().slice(0, 8)}`, name: name.trim(), color };
+  patchGroup(groupId, (x) => ({ ...x, tags: [...x.tags, tag] }));
+  return tag;
+}
+
+export function updateTag(tagId: string, patch: Partial<Tag>) {
+  const found = tagById(tagId);
+  if (found) patchGroup(found.group.id, (g) => ({ ...g, tags: g.tags.map((t) => (t.id === tagId ? { ...t, ...patch, id: t.id } : t)) }));
+}
+
+export function moveTag(tagId: string, dir: -1 | 1) {
+  const found = tagById(tagId);
+  if (!found) return;
+  patchGroup(found.group.id, (g) => {
+    const tags = [...g.tags];
+    const i = tags.findIndex((t) => t.id === tagId);
+    const j = i + dir;
+    if (j < 0 || j >= tags.length) return g;
+    [tags[i], tags[j]] = [tags[j], tags[i]];
+    return { ...g, tags };
+  });
+}
+
+export function deleteTag(tagId: string) {
+  const found = tagById(tagId);
+  if (!found) return;
+  commit({
+    ...db,
+    tagGroups: db.tagGroups.map((g) => (g.id === found.group.id ? { ...g, tags: g.tags.filter((t) => t.id !== tagId), updatedAt: Date.now() } : g)),
+    customers: db.customers.map((c) => (c.tagIds.includes(tagId) ? { ...c, tagIds: c.tagIds.filter((t) => t !== tagId), updatedAt: Date.now() } : c)),
+    smartLists: db.smartLists.map((l) => ({ ...l, rules: l.rules.filter((r) => !('tagId' in r && r.tagId === tagId) && !('stageId' in r && r.stageId === tagId)) })),
+  });
+}
+
+export function addGroup(name: string, mode: 'one' | 'many'): TagGroup | undefined {
+  if (!name.trim()) return undefined;
+  const g: TagGroup = { id: `group-${uid().slice(0, 8)}`, name: name.trim(), mode, allowNew: mode === 'many', tags: [], updatedAt: Date.now() };
+  commit({ ...db, tagGroups: [...db.tagGroups, g] });
+  return g;
+}
+
+export function deleteGroup(groupId: string) {
+  const g = db.tagGroups.find((x) => x.id === groupId);
+  if (!g || g.pipeline) return;
+  const ids = new Set(g.tags.map((t) => t.id));
+  commit({
+    ...db,
+    tagGroups: db.tagGroups.filter((x) => x.id !== groupId),
+    customers: db.customers.map((c) => (c.tagIds.some((t) => ids.has(t)) ? { ...c, tagIds: c.tagIds.filter((t) => !ids.has(t)), updatedAt: Date.now() } : c)),
+    smartLists: db.smartLists.map((l) => ({ ...l, rules: l.rules.filter((r) => !('tagId' in r && ids.has(r.tagId))) })),
+  });
+}
+
+export function tagCount(tagId: string, d: Db = db) {
+  return d.customers.filter((c) => c.tagIds.includes(tagId)).length;
 }

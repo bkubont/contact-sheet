@@ -24,7 +24,7 @@ export function starterTagGroups(): TagGroup[] {
     g('type', 'Customer type', 'one', ['Residential', 'Commercial', 'HOA / Property mgr', 'Municipal']),
     g('source', 'Lead source', 'one', ['Google', 'Referral', 'Yard sign / Door hanger', 'Facebook / Nextdoor', 'Storm call', 'Repeat']),
     g('services', 'Services', 'many', ['Removal', 'Trim / Prune', 'Stump grinding', 'Storm / Emergency', 'Lot clearing', 'Cabling', 'Plant health']),
-    g('flags', 'Job flags', 'many', ['Crane job', 'Power lines', 'Dog', 'Wants firewood', 'Wants chips', 'Annual customer', 'Do not text'], { allowNew: true }),
+    g('flags', 'Job flags', 'many', ['Crane job', 'Power lines', 'Dog', 'Wants firewood', 'Wants chips', 'Annual customer', 'Review asked', 'Do not text'], { allowNew: true }),
     g('network', 'Network', 'many', ['Subcontractor', 'Crane operator', 'Insurance adjuster', 'Realtor', 'Landscaper', 'Dump site']),
   ];
 }
@@ -46,7 +46,7 @@ export function sampleCustomers(): Customer[] {
     mk('Linda', 'Marsh', '(555) 772-9031', '903 Orchard Way, Fairview', ['stage-complete', 'type-residential', 'source-repeat', 'services-stump-grinding', 'flags-annual-customer']),
     mk('', '', '(555) 640-1180', 'Clubhouse lot, 1 Cedar Ridge Dr', ['stage-booked', 'type-hoa-property-mgr', 'source-referral', 'services-trim-prune'],
       { access: 'Check in at clubhouse office.', treeNotes: 'Trim 6 white pines along the lot.' }, { company: 'Cedar Ridge HOA' }),
-    mk('Ruth', 'Bowman', '(555) 233-5402', '77 Pike Rd, Fairview', ['stage-new', 'type-residential', 'source-yard-sign-door-hanger', 'services-stump-grinding']),
+    mk('Ruth', 'Bowman', '(555) 233-5402', '77 Pike Rd, Fairview', ['stage-new', 'type-residential', 'source-yard-sign-door-hanger', 'services-stump-grinding'], {}, { followUp: { date: today(), note: 'Call back about stump grinding price' } }),
     mk('Marcus', 'Okafor', '(555) 918-3307', '5 Quarry Rd, Westfield', ['stage-new', 'type-residential', 'source-storm-call', 'services-storm-emergency'],
       { hazards: ['Limb resting on roof'], treeNotes: 'Storm damage: large limb on roof over garage.' }),
     mk('Tom', 'Baird', '(555) 512-8890', '', ['network-crane-operator'], {}, { company: 'Baird Crane Service' }),

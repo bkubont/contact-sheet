@@ -25,9 +25,16 @@ export interface Customer {
   properties: Property[];
   tagIds: string[];
   notes: string;
+  followUp?: FollowUp;
   sample?: boolean; // example data that can be cleared in one tap
   createdAt: number;
   updatedAt: number;
+}
+
+export interface FollowUp {
+  date: string; // YYYY-MM-DD
+  note: string;
+  auto?: boolean; // set by an automation; cleared automatically when the stage moves on
 }
 
 export interface Tag {
@@ -82,6 +89,23 @@ export interface Job {
   updatedAt: number;
 }
 
+// Smart list rules. A customer is on the list when every rule matches.
+export type Rule =
+  | { type: 'tag'; tagId: string; not?: boolean }        // has (or doesn't have) a tag
+  | { type: 'stageFor'; stageId: string; days: number }  // in a stage for N+ days
+  | { type: 'noContact'; days: number }                  // no text, call or note in N+ days
+  | { type: 'lastJob'; days: number }                    // last finished job N+ days ago
+  | { type: 'followUpDue' };                             // follow-up date is today or past
+
+export interface SmartList {
+  id: string;
+  name: string;
+  why: string;
+  rules: Rule[];
+  pinned: boolean;
+  updatedAt: number;
+}
+
 export interface Settings {
   businessName: string;
   yourName: string;
@@ -96,5 +120,6 @@ export interface Db {
   tagGroups: TagGroup[];
   activities: Activity[];
   jobs: Job[];
+  smartLists: SmartList[];
   settings: Settings;
 }

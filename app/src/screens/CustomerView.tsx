@@ -1,12 +1,12 @@
 import { Fragment, useRef, useState } from 'react';
-import { addNewTag, logActivity, stageGroup, stageOf, toggleTag, useDb } from '../lib/store';
+import { addNewTag, logActivity, setFollowUp, stageGroup, stageOf, toggleTag, useDb } from '../lib/store';
 import { displayName, digits, mapsUrl, timeAgo } from '../lib/util';
 import { Sheet, toast } from '../lib/ui';
 import type { Customer, TagGroup } from '../types';
 import { editJob } from './EditJob';
 import { JobRow } from './Calendar';
 import { jobDates } from '../lib/store';
-import { today } from '../lib/dates';
+import { addDays, fmtDay, today } from '../lib/dates';
 
 export default function CustomerView({ id, onBack, onEdit }: { id: string; onBack: () => void; onEdit: (c: Customer) => void }) {
   const db = useDb();
@@ -74,6 +74,8 @@ export default function CustomerView({ id, onBack, onEdit }: { id: string; onBac
             <button className="btn" onClick={() => noteRef.current?.focus()}>Log</button>
           </div>
         </section>
+
+        <FollowUpBox id={c.id} />
 
         <section className="section">
           <div className="grid2">
@@ -185,5 +187,58 @@ function TagPicker({ group, customer, onClose }: { group: TagGroup; customer: Cu
         )}
       </div>
     </Sheet>
+  );
+}
+
+const QUICK: [string, number][] = [['Tomorrow', 1], ['3 days', 3], ['1 week', 7], ['2 weeks', 14], ['1 month', 30], ['3 months', 91]];
+
+function FollowUpBox({ id }: { id: string }) {
+  const db = useDb();
+  const c = db.customers.find((x) => x.id === id);
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [date, setDate] = useState(addDays(today(), 3));
+  if (!c) return null;
+  const fu = c.followUp;
+  const due = fu && fu.date <= today();
+
+  const start = () => { setNote(fu?.note || ''); setDate(fu?.date || addDays(today(), 3)); setOpen(true); };
+  const save = () => {
+    setFollowUp(c.id, { date, note: note.trim() || 'Follow up' }, `Follow-up set for ${fmtDay(date)}${note.trim() ? `: ${note.trim()}` : ''}`);
+    setOpen(false);
+    toast(`Follow up ${fmtDay(date)}`);
+  };
+
+  return (
+    <>
+      {fu ? (
+        <section className={due ? 'follow due' : 'follow'}>
+          <div className="grow">
+            <b>{due ? (fu.date < today() ? `Overdue · ${fmtDay(fu.date)}` : 'Follow up today') : `Follow up ${fmtDay(fu.date)}`}</b>
+            <div>{fu.note}</div>
+          </div>
+          <button className="btn sm" onClick={start}>Change</button>
+          <button className="btn sm brand" onClick={() => { setFollowUp(c.id, undefined, `Followed up: ${fu.note}`); toast('Follow-up done'); }}>Done</button>
+        </section>
+      ) : (
+        <button className="btn ghost wide" onClick={start}>+ Set a follow-up</button>
+      )}
+      {open && (
+        <Sheet title="Follow up" onClose={() => setOpen(false)}>
+          <div className="sheet-body">
+            <div className="chips wrap">
+              {QUICK.map(([label, n]) => {
+                const d = addDays(today(), n);
+                return <button key={label} className={date === d ? 'chip on' : 'chip'} onClick={() => setDate(d)}>{label}</button>;
+              })}
+            </div>
+            <label className="field">Date<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+            <label className="field">What for<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Check if they want the stump ground" /></label>
+            <button className="btn action wide" onClick={save}>Follow up {fmtDay(date)}</button>
+            {fu && <button className="btn ghost wide" onClick={() => { setFollowUp(c.id, undefined, 'Follow-up removed'); setOpen(false); }}>Remove follow-up</button>}
+          </div>
+        </Sheet>
+      )}
+    </>
   );
 }
