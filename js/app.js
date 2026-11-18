@@ -458,7 +458,8 @@
   $('#mWipe').onclick = () => {
     const n = Store.all().length;
     if (!n) return toast('Nothing to delete.');
-    if (!confirm(`Delete all ${n} contacts from this app? (Your phone's own Contacts app is not affected.)`)) return;
+    const where = Sync.user ? 'from your account on every device' : 'from this app';
+    if (!confirm(`Delete all ${n} contacts ${where}? (Your phone's own Contacts app is not affected.)`)) return;
     if (!confirm('Are you sure? Consider making a backup first.')) return;
     Store.replaceAll([]);
     state.selected.clear(); saveSel();
@@ -503,6 +504,133 @@
       }
     }
   });
+
+  // ---------- Account & sync ----------
+
+  window.addEventListener('contacts-synced', () => render());
+
+  function statusText(s) {
+    switch (s.state) {
+      case 'syncing': return 'Syncing…';
+      case 'synced': return `All changes saved · ${new Date(s.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      case 'offline': return s.message;
+      case 'error': return `Couldn't sync: ${s.message}`;
+      default: return '';
+    }
+  }
+
+  function renderAccount() {
+    if (!Sync.enabled) return;
+    const u = Sync.user;
+    $('#accountBox').hidden = false;
+    $('#accountOut').hidden = !!u;
+    $('#accountIn').hidden = !u;
+    $('#mDeleteAccount').hidden = !u;
+    $('#accountEmail').textContent = u ? u.email : '';
+    $('#accountStatus').textContent = statusText(Sync.status);
+    $('#syncDot').hidden = !u;
+    $('#syncDot').className = 'sync-dot ' + Sync.status.state;
+    $('#storageNote').textContent = u
+      ? 'Your contacts are saved to your account and on this device, so they work offline too.'
+      : 'Without an account your contacts are stored only on this device. Sign in to keep them safe and use them anywhere.';
+  }
+  Sync.onStatus(renderAccount);
+  renderAccount();
+
+  let authMode = 'signin';
+  function setAuthMode(mode) {
+    authMode = mode;
+    const up = mode === 'signup';
+    $('#authTitle').textContent = up ? 'Create account' : 'Sign in';
+    $('#authSubmit').textContent = up ? 'Create account' : 'Sign in';
+    $('#authToggle').textContent = up ? 'Have an account? Sign in' : 'New here? Create an account';
+    $('#authForgot').hidden = up;
+    $('#authForm').elements.password.autocomplete = up ? 'new-password' : 'current-password';
+    authMsg('');
+  }
+  function authMsg(text, ok = false, el = '#authMsg') {
+    $(el).hidden = !text;
+    $(el).textContent = text;
+    $(el).classList.toggle('ok', ok);
+  }
+
+  $('#mSignIn').onclick = () => {
+    $('#menuDlg').close();
+    $('#authForm').reset();
+    setAuthMode('signin');
+    $('#authDlg').showModal();
+  };
+  $('#authToggle').onclick = () => setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+
+  $('#authForgot').onclick = async () => {
+    const email = $('#authForm').elements.email.value.trim();
+    if (!email) return authMsg('Type your email above first, then tap “Forgot password?” again.');
+    const { error } = await Sync.resetPassword(email);
+    authMsg(error || 'Check your email for a link to choose a new password.', !error);
+  };
+
+  $('#authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const email = f.elements.email.value.trim();
+    const password = f.elements.password.value;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return authMsg('Please enter a valid email address.');
+    if (password.length < 6) return authMsg('Password must be at least 6 characters.');
+    $('#authSubmit').disabled = true;
+    try {
+      if (authMode === 'signup') {
+        const r = await Sync.signUp(email, password);
+        if (r.error) return authMsg(r.error);
+        if (r.needsConfirm) {
+          setAuthMode('signin');
+          f.elements.email.value = email;
+          return authMsg('Almost done — check your email and tap the confirmation link, then sign in here.', true);
+        }
+      } else {
+        const r = await Sync.signIn(email, password);
+        if (r.error) return authMsg(r.error);
+      }
+      $('#authDlg').close();
+      toast(`Signed in as ${email}`);
+    } finally {
+      $('#authSubmit').disabled = false;
+    }
+  });
+
+  window.addEventListener('password-recovery', () => {
+    $('#newPwForm').reset();
+    authMsg('', false, '#newPwMsg');
+    $('#newPwDlg').showModal();
+  });
+  $('#newPwForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pw = e.target.elements.password.value;
+    if (pw.length < 6) return authMsg('Password must be at least 6 characters.', false, '#newPwMsg');
+    const { error } = await Sync.setPassword(pw);
+    if (error) return authMsg(error, false, '#newPwMsg');
+    $('#newPwDlg').close();
+    toast('Password updated');
+  });
+
+  $('#mSyncNow').onclick = () => Sync.syncNow();
+  $('#mSignOut').onclick = async () => {
+    if (!confirm('Sign out? Your contacts stay safe in your account and will be removed from this device until you sign in again.')) return;
+    await Sync.signOut();
+    state.selected.clear(); saveSel();
+    $('#menuDlg').close();
+    toast('Signed out');
+  };
+  $('#mDeleteAccount').onclick = async () => {
+    const email = Sync.user && Sync.user.email;
+    if (!confirm(`Permanently delete the account ${email} and every contact saved in it? This cannot be undone.`)) return;
+    const typed = prompt('To confirm, type DELETE');
+    if ((typed || '').trim().toUpperCase() !== 'DELETE') return;
+    const { error } = await Sync.deleteAccount();
+    if (error) return alert('Could not delete the account.\n\n' + error);
+    state.selected.clear(); saveSel();
+    $('#menuDlg').close();
+    toast('Your account has been deleted');
+  };
 
   // ---------- Boot ----------
 

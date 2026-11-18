@@ -20,6 +20,7 @@
     <div class="topbar-row">
       <button class="icon-btn" id="menuBtn" aria-label="Menu">
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <span class="sync-dot" id="syncDot" hidden></span>
       </button>
       <h1>Contacts <span id="countLabel" class="muted"></span></h1>
       <button class="icon-btn accent" id="addBtn" aria-label="Add contact">
@@ -200,19 +201,71 @@
       <button type="button" class="link" data-close>Done</button>
     </div>
     <div class="sheet-body menu">
+      <section class="account" id="accountBox" hidden>
+        <div id="accountOut">
+          <p><b>Use your contacts on any device.</b><br><span class="muted">Sign in and your contacts are saved to your account and kept in sync on your phone, tablet and computer.</span></p>
+          <button class="btn primary wide" id="mSignIn">Sign in or create account</button>
+        </div>
+        <div id="accountIn" hidden>
+          <p>Signed in as <b id="accountEmail"></b><br><span class="muted" id="accountStatus"></span></p>
+          <div class="grid2">
+            <button class="btn" id="mSyncNow">Sync now</button>
+            <button class="btn" id="mSignOut">Sign out</button>
+          </div>
+        </div>
+      </section>
       <button class="btn wide" id="mImport">Import contacts (.vcf / .csv)</button>
       <button class="btn wide" id="mTags">Manage tags</button>
       <button class="btn wide" id="mExportVcf">Export all as .vcf</button>
       <button class="btn wide" id="mBackup">Back up (download .json)</button>
       <button class="btn wide" id="mRestore">Restore from backup</button>
       <button class="btn danger wide" id="mWipe">Delete all contacts</button>
+      <button class="btn danger wide" id="mDeleteAccount" hidden>Delete my account</button>
       <details class="help">
         <summary>How do I get my contacts in?</summary>
         <p><b>iPhone:</b> open the Contacts app, tap <i>Lists</i> (top-left), press and hold <i>All Contacts</i> → <i>Export</i>. Save the .vcf to Files, then use <i>Import</i> here.</p>
         <p><b>Android / Google:</b> go to contacts.google.com → Export → vCard or Google CSV, then import the file here.</p>
-        <p>Your contacts are stored only on this device. Use <i>Back up</i> now and then to keep a copy.</p>
+        <p id="storageNote">Your contacts are stored only on this device. Use <i>Back up</i> now and then to keep a copy.</p>
       </details>
+      <p class="fine"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>
     </div>
+  </dialog>
+
+  <!-- Sign in / sign up -->
+  <dialog id="authDlg" class="sheet small">
+    <form id="authForm" novalidate>
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="authTitle">Sign in</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <label>Email<input name="email" type="email" autocomplete="username" autocapitalize="off" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" minlength="6" required></label>
+        <p class="form-msg" id="authMsg" hidden></p>
+        <button type="submit" class="btn primary wide" id="authSubmit">Sign in</button>
+        <p class="auth-links">
+          <button type="button" class="link" id="authToggle">New here? Create an account</button>
+          <button type="button" class="link" id="authForgot">Forgot password?</button>
+        </p>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Choose a new password (after reset link) -->
+  <dialog id="newPwDlg" class="sheet small">
+    <form id="newPwForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2>New password</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <label>New password<input name="password" type="password" autocomplete="new-password" minlength="6" required></label>
+        <p class="form-msg" id="newPwMsg" hidden></p>
+        <button type="submit" class="btn primary wide">Save password</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- Import options -->
@@ -247,8 +300,11 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <script src="js/config.js"></script>
+  <script src="vendor/supabase.js"></script>
   <script src="vendor/jspdf.umd.min.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/importers.js"></script>
   <script src="js/pdf.js"></script>
   <script src="js/app.js"></script>

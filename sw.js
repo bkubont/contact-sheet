@@ -1,10 +1,14 @@
 /* Offline support: cache the app shell, serve it cache-first, refresh in the background. */
-const CACHE = 'contact-sheet-v2';
+const CACHE = 'contact-sheet-v3';
 const ASSETS = [
   './',
   'index.html',
   'styles.css',
   'manifest.webmanifest',
+  'privacy.html',
+  'js/config.js',
+  'js/sync.js',
+  'vendor/supabase.js',
   'js/store.js',
   'js/importers.js',
   'js/pdf.js',

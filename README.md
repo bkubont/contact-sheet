@@ -9,7 +9,9 @@ contacts you pick.
 - **Add / edit / delete** contacts: name, company, title, multiple phones & emails, address, birthday, notes.
 - **Tags**: add tags per contact, tag many at once, filter the list by tag, rename or delete tags.
 - **Make PDF** of the selected contacts in three layouts — *Cards*, *List* (A–Z directory), or *Table* — choose which fields to include, sort order and paper size. Share it, print it or save it.
-- Works **offline** once installed. Your contacts are stored **only on your device** (nothing is uploaded anywhere).
+- **Optional account**: sign in with email + password and your contacts sync across every device (phone, tablet, computer). Without an account, everything stays on the device.
+- Works **offline** once installed; changes sync when you're back online.
+- Delete-my-account and a privacy policy, ready for the App Store (see [docs/APP_STORE.md](docs/APP_STORE.md)).
 - Back up / restore (`.json`) and export everything as `.vcf`.
 
 ## Typical use
@@ -29,13 +31,28 @@ The app is static files (no server code), so any HTTPS host works. With GitHub P
 > GitHub Pages on a private repository needs a paid GitHub plan; otherwise make the repo public
 > (your contacts are never in the repo — they live only on your phone) or use another static host such as Netlify or Cloudflare Pages.
 
+## Turn on accounts (sign in anywhere)
+Accounts use [Supabase](https://supabase.com) (free to start). One-time setup, about 10 minutes:
+1. Create a free account at supabase.com → **New project** (pick a region near you, save the database password somewhere safe).
+2. In the project: **SQL Editor → New query**, paste everything from [`supabase/schema.sql`](supabase/schema.sql), click **Run**.
+3. **Authentication → URL Configuration**: set *Site URL* to your app's address (e.g. `https://<your-username>.github.io/contact-sheet/`) and add the same address under *Redirect URLs*.
+4. **Project Settings → API**: copy the *Project URL* and the *anon public* key into [`js/config.js`](js/config.js).
+5. Commit and push. The menu now shows **Sign in or create account**.
+
+The anon key is designed to be public. Each person can only read and change their own contacts because of the database's row-level security rules in `schema.sql`.
+
 ## Notes
-- Data lives in the browser storage of the installed app. Deleting the app from the Home Screen deletes its data — use **Back up** occasionally.
+- Without an account, data lives only in the installed app. Deleting it from the Home Screen deletes the data, so use **Back up** occasionally (or sign in).
+- Signing out removes contacts from that device (they stay in your account), so shared devices are safe.
 - The PDF uses standard fonts, so emoji and non-Latin scripts (e.g. Chinese, Arabic) are left out of the PDF.
 
 ## Files
 - `index.html`, `styles.css` — the page
-- `js/store.js` — on-device storage
+- `js/store.js` — on-device storage + change tracking
+- `js/sync.js`, `js/config.js` — accounts and cloud sync (Supabase)
+- `supabase/schema.sql` — database table and security rules
+- `privacy.html` — privacy policy (draft — fill in the bracketed parts)
+- `docs/APP_STORE.md` — roadmap to the App Store
 - `js/importers.js` — vCard/CSV import, vCard export
 - `js/pdf.js` — PDF layouts (uses bundled [jsPDF](https://github.com/parallax/jsPDF), MIT)
 - `sw.js`, `manifest.webmanifest`, `icons/` — offline + Home Screen install
