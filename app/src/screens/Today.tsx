@@ -1,4 +1,6 @@
-import { stageOf, useDb } from '../lib/store';
+import { jobsOn, stageOf, useDb } from '../lib/store';
+import { addDays, today } from '../lib/dates';
+import { JobRow } from './Calendar';
 import { displayName, timeAgo } from '../lib/util';
 import type { Customer } from '../types';
 
@@ -9,6 +11,9 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
   const lastStageChange = (c: Customer) =>
     Math.max(0, ...db.activities.filter((a) => a.customerId === c.id && (a.type === 'stage' || a.type === 'imported' || a.type === 'created')).map((a) => a.at));
 
+  const t = today();
+  const todays = jobsOn(t, db);
+  const tomorrows = jobsOn(addDays(t, 1), db);
   const newLeads = byStage('stage-new');
   const estSet = byStage('stage-est-set');
   const cold = byStage('stage-est-sent').filter((c) => Date.now() - lastStageChange(c) > 7 * 86400000);
@@ -40,7 +45,7 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
         <div className="muted" style={{ fontWeight: 600 }}>{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <div className="head-row"><h1 className="title">Today</h1></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {[['New leads', newLeads.length, false], ['Estimates set', estSet.length, false], ['Going cold', cold.length, cold.length > 0]].map(([label, n, hot]) => (
+          {[['On today', todays.length, false], ['New leads', newLeads.length, false], ['Going cold', cold.length, cold.length > 0]].map(([label, n, hot]) => (
             <div key={label as string} style={{ background: hot ? 'var(--action)' : 'rgba(255,255,255,.12)', borderRadius: 10, padding: '8px 10px' }}>
               <div style={{ font: '800 30px/1 var(--font-display)' }}>{n as number}</div>
               <div style={{ fontSize: 13, opacity: .85 }}>{label as string}</div>
@@ -58,11 +63,17 @@ export default function Today({ onOpen, onGo }: { onOpen: (id: string) => void; 
         )}
         {db.customers.length > 0 && (
           <>
+            <section style={{ display: 'grid', gap: 6 }}>
+              <div className="section-head"><span className="eyebrow">Today's route</span><button className="link" onClick={() => onGo('calendar')}>Calendar ›</button></div>
+              {todays.length ? <div className="evs">{todays.map((j) => <JobRow key={j.id} job={j} date={t} db={db} onOpenCustomer={onOpen} />)}</div>
+                : <p className="muted" style={{ margin: '0 2px' }}>Nothing scheduled today.</p>}
+              {tomorrows.length > 0 && <p className="muted" style={{ margin: '2px 2px 0' }}>Tomorrow: {tomorrows.length} {tomorrows.length === 1 ? 'visit' : 'visits'} scheduled.</p>}
+            </section>
             <Section title="Estimates going cold" list={cold} empty="Nothing going cold. Estimates sent more than 7 days ago show up here." hint={(c) => `Estimate sent ${timeAgo(lastStageChange(c))}`} />
             <Section title="New leads to call back" list={newLeads} empty="No new leads waiting." hint={(c) => c.properties[0]?.address || c.phones[0]?.value || ''} />
             <Section title="Estimates set" list={estSet} empty="No estimates set." hint={(c) => c.properties[0]?.address || ''} />
             <Section title="Waiting on a yes" list={waiting} empty="No estimates out." hint={(c) => `Sent ${timeAgo(lastStageChange(c))}`} />
-            <div className="soon"><h3>Coming to Today</h3><p>Your estimate route and jobs from the calendar (milestone 2), texts owed and new replies from Quo (milestone 3), and pinned smart lists (milestone 4).</p></div>
+            <div className="soon"><h3>Coming to Today</h3><p>Texts owed and new replies from Quo (milestone 3), and pinned smart lists (milestone 4).</p></div>
           </>
         )}
       </div>

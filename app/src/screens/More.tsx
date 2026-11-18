@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { clearSamples, getDb, importCustomers, loadSamples, replaceDb, stageGroup, useDb } from '../lib/store';
+import { clearSamples, getDb, importCustomers, loadSamples, replaceDb, stageGroup, updateSettings, useDb } from '../lib/store';
 import { parseContactFile } from '../lib/importers';
 import { Sheet, askConfirm, toast } from '../lib/ui';
 import type { Customer, Db } from '../types';
@@ -68,6 +68,9 @@ export default function More() {
           </p>
         </section>
 
+        <ListEditor title="Crew" items={db.settings.crew} placeholder="Add a crew member" onChange={(crew) => updateSettings({ crew })} />
+        <ListEditor title="Equipment" items={db.settings.equipment} placeholder="Add equipment" onChange={(equipment) => updateSettings({ equipment })} />
+
         <section className="menu">
           <div className="eyebrow">Tags</div>
           {db.tagGroups.map((g) => (
@@ -110,5 +113,30 @@ export default function More() {
         </Sheet>
       )}
     </>
+  );
+}
+
+function ListEditor({ title, items, placeholder, onChange }: { title: string; items: string[]; placeholder: string; onChange: (v: string[]) => void }) {
+  const [v, setV] = useState('');
+  const add = () => {
+    const name = v.trim();
+    if (!name) return;
+    if (items.some((x) => x.toLowerCase() === name.toLowerCase())) { toast(`${name} is already on the list`); return; }
+    onChange([...items, name]);
+    setV('');
+  };
+  return (
+    <section className="menu">
+      <div className="eyebrow">{title}</div>
+      <div className="taglist">
+        {items.map((x) => (
+          <span key={x}>{x}<button aria-label={`Remove ${x}`} onClick={() => onChange(items.filter((y) => y !== x))}>×</button></span>
+        ))}
+      </div>
+      <div className="notebox">
+        <input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} aria-label={placeholder} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+        <button className="btn brand" onClick={add} disabled={!v.trim()}>Add</button>
+      </div>
+    </section>
   );
 }

@@ -59,9 +59,34 @@ export interface Activity {
   updatedAt: number;
 }
 
+export type JobKind = 'estimate' | 'job';
+export type JobStatus = 'scheduled' | 'done' | 'cancelled';
+
+// An estimate visit or a work job on the calendar.
+export interface Job {
+  id: string;
+  kind: JobKind;
+  customerId: string;
+  propertyId?: string;
+  date: string;      // first day, YYYY-MM-DD (local)
+  start: string;     // HH:MM, '' = anytime
+  minutes: number;   // estimates: visit length
+  days: number;      // jobs: number of working days (multi-day jobs)
+  crew: string[];    // crew member names
+  equipment: string[];
+  work: string;      // what's being done
+  notes: string;
+  status: JobStatus;
+  sample?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Settings {
   businessName: string;
   yourName: string;
+  crew: string[];
+  equipment: string[];
   updatedAt: number;
 }
 
@@ -70,5 +95,6 @@ export interface Db {
   customers: Customer[];
   tagGroups: TagGroup[];
   activities: Activity[];
+  jobs: Job[];
   settings: Settings;
 }

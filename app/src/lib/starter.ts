@@ -1,4 +1,5 @@
-import type { Customer, TagGroup } from '../types';
+import type { Customer, Job, TagGroup } from '../types';
+import { addDays, today } from './dates';
 import { uid } from './util';
 
 // Tree-service starter setup. Everything here can be renamed, recolored or removed later.
@@ -50,4 +51,27 @@ export function sampleCustomers(): Customer[] {
       { hazards: ['Limb resting on roof'], treeNotes: 'Storm damage: large limb on roof over garage.' }),
     mk('Tom', 'Baird', '(555) 512-8890', '', ['network-crane-operator'], {}, { company: 'Baird Crane Service' }),
   ];
+}
+
+// Example schedule around today for the sample customers.
+export function sampleJobs(customers: Customer[]): Job[] {
+  const by = (name: string) => customers.find((c) => c.first === name || c.company === name);
+  const t = today();
+  const now = Date.now();
+  const mk = (who: string, kind: Job['kind'], date: string, start: string, extra: Partial<Job>): Job | null => {
+    const c = by(who);
+    if (!c) return null;
+    return {
+      id: uid(), kind, customerId: c.id, propertyId: c.properties[0]?.id, date, start,
+      minutes: 45, days: 1, crew: ['Me'], equipment: [], work: '', notes: '', status: 'scheduled',
+      sample: true, createdAt: now, updatedAt: now, ...extra,
+    };
+  };
+  return [
+    mk('Pat', 'estimate', t, '08:30', { work: 'Look at leaning red oak by garage' }),
+    mk('Ruth', 'estimate', t, '13:15', { work: 'Stump grinding quote' }),
+    mk('Cedar Ridge HOA', 'job', addDays(t, 1), '07:30', { work: 'Trim 6 white pines along the lot', crew: ['Me', 'Helper 1'], equipment: ['Bucket truck', 'Chipper'] }),
+    mk('Marcus', 'job', addDays(t, 2), '07:30', { days: 2, work: 'Remove storm-damaged limb from roof, take down tree', crew: ['Me', 'Helper 1', 'Helper 2'], equipment: ['Crane', 'Chipper'] }),
+    mk('Linda', 'job', addDays(t, -3), '08:00', { work: 'Grind 2 stumps', equipment: ['Stump grinder'], status: 'done' }),
+  ].filter(Boolean) as Job[];
 }

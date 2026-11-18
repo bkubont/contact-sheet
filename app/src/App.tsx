@@ -7,6 +7,8 @@ import EditCustomer from './screens/EditCustomer';
 import Today from './screens/Today';
 import More from './screens/More';
 import { Soon } from './screens/Soon';
+import Calendar from './screens/Calendar';
+import { JobEditorHost, editJob } from './screens/EditJob';
 
 export type Tab = 'today' | 'people' | 'lists' | 'calendar' | 'more';
 const TABS: { id: Tab; label: string }[] = [
@@ -48,7 +50,7 @@ export default function App() {
   } else if (route.tab === 'more') {
     screen = <More />;
   } else if (route.tab === 'calendar') {
-    screen = <Soon title="Calendar" heading="Job calendar is next" text="Estimates and jobs on one calendar with day and week views, crew and equipment, multi-day jobs, double-booking warnings, and drag to schedule. Coming in milestone 2." />;
+    screen = <Calendar onOpenCustomer={openCustomer} />;
   } else {
     screen = <Soon title="Lists" heading="Smart lists are coming" text="Saved searches like “Estimates going cold” and “Annual trim due” that keep themselves up to date. Coming in milestone 4. For now, filter by stage on the People tab." />;
   }
@@ -57,7 +59,7 @@ export default function App() {
     <div className="app">
       {screen}
       {!route.customerId && route.tab !== 'more' && (
-        <button className="fab" aria-label="Add customer" onClick={() => setEditing(null)}>+</button>
+        <button className="fab" aria-label={route.tab === 'calendar' ? 'Schedule' : 'Add customer'} onClick={() => (route.tab === 'calendar' ? editJob({}) : setEditing(null))}>+</button>
       )}
       <nav className="tabbar" aria-label="Main">
         {TABS.map((t) => (
@@ -71,6 +73,7 @@ export default function App() {
           onSaved={(c, isNew) => { setEditing(undefined); if (isNew) openCustomer(c.id); }}
         />
       )}
+      <JobEditorHost />
       <ConfirmHost />
       <ToastHost />
     </div>

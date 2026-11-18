@@ -3,6 +3,10 @@ import { addNewTag, logActivity, stageGroup, stageOf, toggleTag, useDb } from '.
 import { displayName, digits, mapsUrl, timeAgo } from '../lib/util';
 import { Sheet, toast } from '../lib/ui';
 import type { Customer, TagGroup } from '../types';
+import { editJob } from './EditJob';
+import { JobRow } from './Calendar';
+import { jobDates } from '../lib/store';
+import { today } from '../lib/dates';
 
 export default function CustomerView({ id, onBack, onEdit }: { id: string; onBack: () => void; onEdit: (c: Customer) => void }) {
   const db = useDb();
@@ -69,6 +73,27 @@ export default function CustomerView({ id, onBack, onEdit }: { id: string; onBac
               onClick={(e) => { if (!addr) { e.preventDefault(); toast('No address'); } }}>Nav</a>
             <button className="btn" onClick={() => noteRef.current?.focus()}>Log</button>
           </div>
+        </section>
+
+        <section className="section">
+          <div className="grid2">
+            <button className="btn" onClick={() => editJob({ kind: 'estimate', customerId: c.id })}>+ Estimate</button>
+            <button className="btn" onClick={() => editJob({ kind: 'job', customerId: c.id, start: '07:30', crew: db.settings.crew.slice(0, 2) })}>+ Job</button>
+          </div>
+          {(() => {
+            const t = today();
+            const mine = db.jobs.filter((j) => j.customerId === c.id && j.status !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
+            const upcoming = mine.filter((j) => j.status === 'scheduled' && jobDates(j).some((d) => d >= t));
+            const past = mine.filter((j) => !upcoming.includes(j)).slice(-3).reverse();
+            return (
+              <>
+                {upcoming.length > 0 && <div className="eyebrow">Scheduled</div>}
+                {upcoming.length > 0 && <div className="evs">{upcoming.map((j) => <JobRow key={j.id} job={j} date={j.date} db={db} />)}</div>}
+                {past.length > 0 && <div className="eyebrow">Past visits</div>}
+                {past.length > 0 && <div className="evs">{past.map((j) => <JobRow key={j.id} job={j} date={j.date} db={db} />)}</div>}
+              </>
+            );
+          })()}
         </section>
 
         {c.properties.map((p, i) => (
