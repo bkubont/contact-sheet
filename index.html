@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Contact Sheet</title>
+  <meta name="description" content="Your contacts, tagged and printable as a PDF.">
+  <meta name="theme-color" content="#1f5e63">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Contacts">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/favicon-32.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-row">
+      <button class="icon-btn" id="menuBtn" aria-label="Menu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <span class="sync-dot" id="syncDot" hidden></span>
+      </button>
+      <h1>Contacts <span id="countLabel" class="muted"></span></h1>
+      <button class="icon-btn accent" id="addBtn" aria-label="Add contact">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>
+      <input id="search" type="search" placeholder="Search name, company, phone, tag…" autocomplete="off">
+    </div>
+    <div class="chips" id="tagChips"></div>
+  </header>
+
+  <main id="list" class="list"></main>
+
+  <div id="empty" class="empty" hidden>
+    <h2>No contacts yet</h2>
+    <p>Import your phone's contacts from a <b>.vcf</b> or <b>.csv</b> file, or add one by hand.</p>
+    <button class="btn primary" id="emptyImport">Import contacts</button>
+    <button class="btn" id="emptyAdd">Add a contact</button>
+  </div>
+
+  <footer class="selbar" id="selbar" hidden>
+    <div class="selbar-info">
+      <b id="selCount">0</b> selected
+      <button class="link" id="selAll">Select all shown</button>
+      <button class="link" id="selClear">Clear</button>
+    </div>
+    <div class="selbar-actions">
+      <button class="btn" id="selTag">Tag…</button>
+      <button class="btn primary" id="selPdf">Make PDF</button>
+    </div>
+  </footer>
+
+  <!-- Contact editor -->
+  <dialog id="editDlg" class="sheet">
+    <form method="dialog" id="editForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="editTitle">New contact</h2>
+        <button type="submit" class="link strong" value="save">Save</button>
+      </div>
+      <div class="sheet-body">
+        <div class="grid2">
+          <label>First name<input name="first" autocomplete="off"></label>
+          <label>Last name<input name="last" autocomplete="off"></label>
+        </div>
+        <div class="grid2">
+          <label>Company<input name="company" autocomplete="off"></label>
+          <label>Job title<input name="title" autocomplete="off"></label>
+        </div>
+
+        <fieldset>
+          <legend>Phone</legend>
+          <div id="phoneRows" class="multi"></div>
+          <button type="button" class="link" id="addPhone">+ Add phone</button>
+        </fieldset>
+        <fieldset>
+          <legend>Email</legend>
+          <div id="emailRows" class="multi"></div>
+          <button type="button" class="link" id="addEmail">+ Add email</button>
+        </fieldset>
+
+        <label>Address<textarea name="address" rows="3"></textarea></label>
+        <label>Birthday<input name="birthday" placeholder="e.g. 1980-04-12 or April 12"></label>
+
+        <fieldset>
+          <legend>Tags</legend>
+          <div class="tag-editor" id="tagEditor">
+            <div id="tagPills" class="pills"></div>
+            <input id="tagInput" placeholder="Add tag and press Enter" autocomplete="off" enterkeyhint="done">
+          </div>
+          <div id="tagSuggest" class="suggest"></div>
+        </fieldset>
+
+        <label>Notes<textarea name="notes" rows="3"></textarea></label>
+
+        <button type="button" class="btn danger wide" id="deleteBtn">Delete contact</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- PDF options -->
+  <dialog id="pdfDlg" class="sheet">
+    <form method="dialog" id="pdfForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2>Make PDF</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <p class="muted" id="pdfSummary"></p>
+        <label>Title<input name="title" value="Contact Sheet"></label>
+
+        <fieldset>
+          <legend>Layout</legend>
+          <div class="seg">
+            <label><input type="radio" name="layout" value="cards" checked><span>Cards</span></label>
+            <label><input type="radio" name="layout" value="list"><span>List</span></label>
+            <label><input type="radio" name="layout" value="table"><span>Table</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Include</legend>
+          <div class="checks">
+            <label><input type="checkbox" name="f_company" checked> Company &amp; title</label>
+            <label><input type="checkbox" name="f_phones" checked> Phone numbers</label>
+            <label><input type="checkbox" name="f_emails" checked> Emails</label>
+            <label><input type="checkbox" name="f_address" checked> Address</label>
+            <label><input type="checkbox" name="f_birthday"> Birthday</label>
+            <label><input type="checkbox" name="f_tags"> Tags</label>
+            <label><input type="checkbox" name="f_notes"> Notes</label>
+          </div>
+        </fieldset>
+
+        <div class="grid2">
+          <label>Sort by
+            <select name="sort">
+              <option value="last">Last name</option>
+              <option value="first">First name</option>
+              <option value="company">Company</option>
+            </select>
+          </label>
+          <label>Paper
+            <select name="paper">
+              <option value="letter">US Letter</option>
+              <option value="a4">A4</option>
+            </select>
+          </label>
+        </div>
+
+        <button type="submit" class="btn primary wide" value="make">Create PDF</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- PDF ready -->
+  <dialog id="pdfReadyDlg" class="sheet small">
+    <div class="sheet-head">
+      <span class="spacer"></span>
+      <h2>PDF ready</h2>
+      <button type="button" class="link" data-close>Done</button>
+    </div>
+    <div class="sheet-body">
+      <p id="pdfReadyInfo" class="muted"></p>
+      <button class="btn primary wide" id="pdfShare">Share / Print / Save</button>
+      <button class="btn wide" id="pdfOpen">Open PDF</button>
+      <button class="btn wide" id="pdfDownload">Download</button>
+    </div>
+  </dialog>
+
+  <!-- Bulk tag -->
+  <dialog id="bulkTagDlg" class="sheet small">
+    <form method="dialog" id="bulkTagForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2>Tag selected</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <p class="muted" id="bulkTagInfo"></p>
+        <label>Tag<input name="tag" id="bulkTagInput" list="allTagsList" autocomplete="off" required></label>
+        <datalist id="allTagsList"></datalist>
+        <div class="grid2">
+          <button type="submit" class="btn primary" value="add">Add tag</button>
+          <button type="submit" class="btn" value="remove">Remove tag</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Menu -->
+  <dialog id="menuDlg" class="sheet small">
+    <div class="sheet-head">
+      <span class="spacer"></span>
+      <h2>Menu</h2>
+      <button type="button" class="link" data-close>Done</button>
+    </div>
+    <div class="sheet-body menu">
+      <section class="account" id="accountBox" hidden>
+        <div id="accountOut">
+          <p><b>Use your contacts on any device.</b><br><span class="muted">Sign in and your contacts are saved to your account and kept in sync on your phone, tablet and computer.</span></p>
+          <button class="btn primary wide" id="mSignIn">Sign in or create account</button>
+        </div>
+        <div id="accountIn" hidden>
+          <p>Signed in as <b id="accountEmail"></b><br><span class="muted" id="accountStatus"></span></p>
+          <div class="grid2">
+            <button class="btn" id="mSyncNow">Sync now</button>
+            <button class="btn" id="mSignOut">Sign out</button>
+          </div>
+        </div>
+      </section>
+      <button class="btn wide" id="mImport">Import contacts (.vcf / .csv)</button>
+      <button class="btn wide" id="mTags">Manage tags</button>
+      <button class="btn wide" id="mExportVcf">Export all as .vcf</button>
+      <button class="btn wide" id="mBackup">Back up (download .json)</button>
+      <button class="btn wide" id="mRestore">Restore from backup</button>
+      <button class="btn danger wide" id="mWipe">Delete all contacts</button>
+      <button class="btn danger wide" id="mDeleteAccount" hidden>Delete my account</button>
+      <details class="help">
+        <summary>How do I get my contacts in?</summary>
+        <p><b>iPhone:</b> open the Contacts app, tap <i>Lists</i> (top-left), press and hold <i>All Contacts</i> → <i>Export</i>. Save the .vcf to Files, then use <i>Import</i> here.</p>
+        <p><b>Android / Google:</b> go to contacts.google.com → Export → vCard or Google CSV, then import the file here.</p>
+        <p id="storageNote">Your contacts are stored only on this device. Use <i>Back up</i> now and then to keep a copy.</p>
+      </details>
+      <p class="fine"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>
+    </div>
+  </dialog>
+
+  <!-- Sign in / sign up -->
+  <dialog id="authDlg" class="sheet small">
+    <form id="authForm" novalidate>
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2 id="authTitle">Sign in</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <label>Email<input name="email" type="email" autocomplete="username" autocapitalize="off" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" minlength="6" required></label>
+        <p class="form-msg" id="authMsg" hidden></p>
+        <button type="submit" class="btn primary wide" id="authSubmit">Sign in</button>
+        <p class="auth-links">
+          <button type="button" class="link" id="authToggle">New here? Create an account</button>
+          <button type="button" class="link" id="authForgot">Forgot password?</button>
+        </p>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Choose a new password (after reset link) -->
+  <dialog id="newPwDlg" class="sheet small">
+    <form id="newPwForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2>New password</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <label>New password<input name="password" type="password" autocomplete="new-password" minlength="6" required></label>
+        <p class="form-msg" id="newPwMsg" hidden></p>
+        <button type="submit" class="btn primary wide">Save password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Import options -->
+  <dialog id="importDlg" class="sheet small">
+    <form method="dialog" id="importForm">
+      <div class="sheet-head">
+        <button type="button" class="link" data-close>Cancel</button>
+        <h2>Import</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="sheet-body">
+        <p id="importInfo"></p>
+        <label>Tag everyone in this import (optional)<input name="tag" list="allTagsList" autocomplete="off"></label>
+        <label class="inline"><input type="checkbox" name="skipDupes" checked> Skip contacts I already have</label>
+        <button type="submit" class="btn primary wide" value="go">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Manage tags -->
+  <dialog id="tagsDlg" class="sheet small">
+    <div class="sheet-head">
+      <span class="spacer"></span>
+      <h2>Tags</h2>
+      <button type="button" class="link" data-close>Done</button>
+    </div>
+    <div class="sheet-body" id="tagsList"></div>
+  </dialog>
+
+  <input type="file" id="fileImport" accept=".vcf,.vcard,.csv,text/vcard,text/x-vcard,text/csv" hidden>
+  <input type="file" id="fileRestore" accept=".json,application/json" hidden>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/config.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/importers.js"></script>
+  <script src="js/pdf.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
