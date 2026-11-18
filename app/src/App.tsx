@@ -9,6 +9,7 @@ import More from './screens/More';
 import Calendar from './screens/Calendar';
 import { ListView, ListsIndex } from './screens/Lists';
 import { JobEditorHost, editJob } from './screens/EditJob';
+import { PdfHost } from './screens/PdfReady';
 
 export type Tab = 'today' | 'people' | 'lists' | 'calendar' | 'more';
 const TABS: { id: Tab; label: string }[] = [
@@ -77,6 +78,7 @@ export default function App() {
         />
       )}
       <JobEditorHost />
+      <PdfHost />
       <ConfirmHost />
       <ToastHost />
     </div>

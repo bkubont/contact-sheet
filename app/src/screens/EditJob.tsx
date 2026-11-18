@@ -4,6 +4,8 @@ import { addDays, fmtDay, today } from '../lib/dates';
 import { displayName, uid } from '../lib/util';
 import { Sheet, askConfirm, toast } from '../lib/ui';
 import type { Job } from '../types';
+import { showPdf } from './PdfReady';
+import { jobSheets } from '../lib/pdf';
 
 // Open the job editor from anywhere: editJob({ customerId }) or editJob(existingJob)
 let open: ((j: Partial<Job>) => void) | null = null;
@@ -145,6 +147,7 @@ function EditJob({ preset, onClose }: { preset: Partial<Job>; onClose: () => voi
         <label className="field">Notes<textarea value={j.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything the crew should know" /></label>
 
         <button className="btn action wide" onClick={save}>{existing ? 'Save changes' : `Schedule ${j.kind}`}</button>
+        {existing && <button className="btn wide" onClick={() => { const jj = { ...j }; onClose(); showPdf(jobSheets([jj], db), `${j.kind === 'estimate' ? 'estimate' : 'job'}-sheet-${j.date}.pdf`); }}>Print {j.kind === 'estimate' ? 'visit' : 'job'} sheet</button>}
         {existing && existing.status === 'scheduled' && (
           <>
             <button className="btn brand wide" onClick={() => status('done')}>{j.kind === 'estimate' ? 'Estimate visit done' : 'Job complete'}</button>

@@ -5,6 +5,8 @@ import { fmtDay, today } from '../lib/dates';
 import { displayName, sortKey, uid } from '../lib/util';
 import { Sheet, askConfirm, toast } from '../lib/ui';
 import type { Db, Rule, SmartList } from '../types';
+import { showPdf } from './PdfReady';
+import { labels } from '../lib/pdf';
 
 export function ListsIndex({ onOpenList }: { onOpenList: (id: string) => void }) {
   const db = useDb();
@@ -47,6 +49,7 @@ export function ListView({ id, onBack, onOpen }: { id: string; onBack: () => voi
   const list = db.smartLists.find((l) => l.id === id);
   const [editing, setEditing] = useState(false);
   const [tagging, setTagging] = useState(false);
+  const [labelling, setLabelling] = useState(false);
   const people = useMemo(() => (list ? runList(list, db).sort((a, b) => sortKey(a).localeCompare(sortKey(b))) : []), [list, db]);
 
   if (!list) {
@@ -70,6 +73,7 @@ export function ListView({ id, onBack, onOpen }: { id: string; onBack: () => voi
           <button className="btn" onClick={() => { saveSmartList({ ...list, pinned: !list.pinned }); toast(list.pinned ? 'Removed from Today' : 'Pinned to Today'); }}>{list.pinned ? 'Unpin' : 'Pin to Today'}</button>
           <button className="btn" disabled={!people.length} onClick={() => setTagging(true)}>Tag all…</button>
         </div>
+        <button className="btn ghost" disabled={!people.length} onClick={() => setLabelling(true)}>Print mailing labels</button>
         {people.length === 0 ? (
           <p className="muted" style={{ textAlign: 'center', padding: 24 }}>Nobody matches right now.</p>
         ) : (
@@ -94,6 +98,15 @@ export function ListView({ id, onBack, onOpen }: { id: string; onBack: () => voi
       </div>
       {editing && <ListEditor list={list} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} onDeleted={onBack} />}
       {tagging && <BulkTag ids={people.map((c) => c.id)} db={db} onClose={() => setTagging(false)} />}
+      {labelling && (
+        <Sheet title="Mailing labels" onClose={() => setLabelling(false)}>
+          <div className="sheet-body">
+            <p className="muted" style={{ margin: 0 }}>Letter-size sheets of 30 labels (Avery 5160 / 8160 and matching store brands). One label per property address.</p>
+            <button className="btn action wide" onClick={() => { setLabelling(false); showPdf(labels(people, db, { resident: false }).then((r) => ({ blob: r.blob, note: `${r.count} labels${r.skipped ? `, ${r.skipped} without an address skipped` : ''}` })), 'labels.pdf'); }}>Labels with names</button>
+            <button className="btn wide" onClick={() => { setLabelling(false); showPdf(labels(people, db, { resident: true }).then((r) => ({ blob: r.blob, note: `${r.count} labels` })), 'labels-resident.pdf'); }}>“Current Resident” labels</button>
+          </div>
+        </Sheet>
+      )}
     </>
   );
 }

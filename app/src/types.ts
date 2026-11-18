@@ -108,6 +108,8 @@ export interface SmartList {
 
 export interface Settings {
   businessName: string;
+  businessPhone?: string;
+  logo?: string; // small data URL, printed on sheets
   yourName: string;
   crew: string[];
   equipment: string[];

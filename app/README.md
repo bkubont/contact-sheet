@@ -16,7 +16,7 @@ npm run build:preview  # single-file build → app/preview-dist/index.html
 2. **Job calendar** ✅: estimates + jobs, day/week, multi-day, crew & equipment, double-booking warnings
 3. Accounts, cloud sync & Quo texting (waiting on a backend choice: Supabase slot or Hostinger PHP/MySQL)
 4. **Smart lists, follow-ups, tag editor** ✅
-5. Printouts (crew job sheet, estimate route, labels) and deploy to Hostinger
+5. **Printouts** ✅: crew job sheet, day route, mailing labels, with your logo; deploys to Hostinger via the `deploy` branch
 
 ## Layout
 - `src/types.ts`: data model (customers, properties, tag groups, activity)

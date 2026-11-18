@@ -4,6 +4,8 @@ import { addDays, dayDiff, fmtDay, fmtTime, parseYmd, startOfWeek, today } from 
 import { displayName } from '../lib/util';
 import { editJob } from './EditJob';
 import type { Db, Job } from '../types';
+import { showPdf } from './PdfReady';
+import { jobSheets, routeSheet } from '../lib/pdf';
 
 export function JobRow({ job, date, db, onOpenCustomer }: { job: Job; date: string; db: Db; onOpenCustomer?: (id: string) => void }) {
   const c = db.customers.find((x) => x.id === job.customerId);
@@ -90,6 +92,12 @@ export default function Calendar({ onOpenCustomer }: { onOpenCustomer: (id: stri
           <section style={{ display: 'grid', gap: 8 }}>
             <div className="eyebrow">{sel === today() ? 'Today · ' : ''}{fmtDay(sel, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
             {dayList(sel)}
+            {jobsOn(sel, db).length > 0 && (
+              <div className="grid2">
+                <button className="btn" onClick={() => showPdf(routeSheet(sel, jobsOn(sel, db), db), `route-${sel}.pdf`)}>Print route</button>
+                <button className="btn" onClick={() => showPdf(jobSheets(jobsOn(sel, db), db), `sheets-${sel}.pdf`)}>Print sheets ({jobsOn(sel, db).length})</button>
+              </div>
+            )}
           </section>
         ) : days.map((d) => (
           <section key={d} style={{ display: 'grid', gap: 8 }}>

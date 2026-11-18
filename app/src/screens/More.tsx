@@ -9,6 +9,7 @@ export default function More() {
   const db = useDb();
   const fileRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ name: string; list: Customer[] } | null>(null);
   const [stageId, setStageId] = useState('stage-past');
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -71,6 +72,20 @@ export default function More() {
           </p>
         </section>
 
+        <section className="menu">
+          <div className="eyebrow">Your business (printed on sheets)</div>
+          <label className="field">Business name<input defaultValue={db.settings.businessName} onBlur={(e) => e.target.value.trim() && updateSettings({ businessName: e.target.value.trim() })} /></label>
+          <label className="field">Business phone<input type="tel" defaultValue={db.settings.businessPhone || ''} onBlur={(e) => updateSettings({ businessPhone: e.target.value.trim() })} placeholder="(555) 555-5555" /></label>
+          <div className="fieldset" style={{ alignItems: 'center' }}>
+            <span className="eyebrow">Logo</span>
+            {db.settings.logo ? <img src={db.settings.logo} alt="Your logo" style={{ maxHeight: 64, maxWidth: 220, objectFit: 'contain', justifySelf: 'start' }} /> : <span className="muted">No logo yet. Your business name prints instead.</span>}
+            <div className="grid2">
+              <button className="btn" onClick={() => logoRef.current?.click()}>{db.settings.logo ? 'Change logo' : 'Add logo'}</button>
+              {db.settings.logo && <button className="btn ghost" onClick={() => updateSettings({ logo: undefined })}>Remove</button>}
+            </div>
+          </div>
+        </section>
+
         <ListEditor title="Crew" items={db.settings.crew} placeholder="Add a crew member" onChange={(crew) => updateSettings({ crew })} />
         <ListEditor title="Equipment" items={db.settings.equipment} placeholder="Add equipment" onChange={(equipment) => updateSettings({ equipment })} />
 
@@ -98,6 +113,11 @@ export default function More() {
       </div>
 
       <input ref={fileRef} type="file" hidden accept=".vcf,.vcard,.csv,text/vcard,text/x-vcard,text/csv" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={logoRef} type="file" hidden accept="image/png,image/jpeg" onChange={async (e) => {
+        const f = e.target.files?.[0]; e.target.value = '';
+        if (!f) return;
+        try { updateSettings({ logo: await shrinkImage(f) }); toast('Logo saved'); } catch { toast('Could not use that image. Try a PNG or JPG.'); }
+      }} />
       <input ref={restoreRef} type="file" hidden accept=".json,application/json" onChange={(e) => { restore(e.target.files?.[0]); e.target.value = ''; }} />
 
       {groupId && <GroupEditor groupId={groupId} onClose={() => setGroupId(null)} />}
@@ -144,4 +164,22 @@ function ListEditor({ title, items, placeholder, onChange }: { title: string; it
       </div>
     </section>
   );
+}
+
+// Keep the logo small (max 480px wide) so it stores and prints quickly.
+function shrinkImage(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const u = URL.createObjectURL(f);
+    img.onload = () => {
+      const scale = Math.min(1, 480 / img.width, 240 / img.height);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(u);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); reject(new Error('bad image')); };
+    img.src = u;
+  });
 }
