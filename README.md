@@ -4,6 +4,8 @@ A small web app you can add to your phone's Home Screen. It holds your contact l
 lets you tag contacts and add new ones, and makes a printable PDF of whichever
 contacts you pick.
 
+> **Company CRM is not this repo.** The Canopy Clients prototype under [`app/`](app/) is **retired / frozen**. Company customer CRM lives in [Canopy Estimate](https://github.com/bkubont/canopy-estimate). This **root** Contact Sheet app remains the continuing personal / App Store product.
+
 ## Features
 - **Import** your existing contacts from a `.vcf` (iPhone / vCard) or `.csv` (Google, Outlook) file — duplicates are skipped.
 - **Add / edit / delete** contacts: name, company, title, multiple phones & emails, address, birthday, notes.
