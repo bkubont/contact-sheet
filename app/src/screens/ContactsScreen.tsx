@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Contact } from '../types';
 import { Store, displayName, loadSelection, saveSelection } from '../lib/store';
 import { useDb } from '../hooks/useStore';
@@ -42,13 +42,36 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [selected, setSelected] = useState<Set<string>>(() => loadSelection());
   const [editing, setEditing] = useState<Contact | null | undefined>(undefined); // undefined=closed, null=new
   const [pdfOpen, setPdfOpen] = useState(false);
+  /** When true, PDF uses the current selection only — never falls back to the filtered list. */
+  const [pdfFromSelection, setPdfFromSelection] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkTag, setBulkTag] = useState('');
   const [saveDirOpen, setSaveDirOpen] = useState(false);
   const [dirName, setDirName] = useState('');
+  const [targetDirId, setTargetDirId] = useState<string>('');
 
   const counts = useMemo(() => Store.tagCounts(), [db]);
   const untaggedCount = useMemo(() => db.contacts.filter((c) => !c.tags.length).length, [db]);
+  const manualDirectories = useMemo(
+    () => db.directories.filter((d) => d.mode === 'manual').sort((a, b) => a.name.localeCompare(b.name)),
+    [db],
+  );
+
+  // Drop selection IDs that no longer exist (delete, restore, wipe).
+  useEffect(() => {
+    const alive = new Set(db.contacts.map((c) => c.id));
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (alive.has(id)) next.add(id);
+        else changed = true;
+      }
+      if (!changed) return prev;
+      saveSelection(next);
+      return next;
+    });
+  }, [db.contacts]);
 
   const visible = useMemo(() => {
     return db.contacts
@@ -101,34 +124,55 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     [db, selected],
   );
 
+  const pdfContacts = pdfFromSelection ? selectedContacts : visible;
+
   function applyBulk(add: boolean) {
     let t = bulkTag.trim();
     if (!t) return;
     const existing = counts.find(([x]) => x.toLowerCase() === t.toLowerCase());
     if (existing) t = existing[0];
     Store.bulkTag([...selected], t, add);
-    toast(add ? `Tagged ${selected.size}` : `Removed tag from ${selected.size}`);
+    toast(add ? `Tagged ${selectedContacts.length}` : `Removed tag from ${selectedContacts.length}`);
     setBulkTagOpen(false);
     setBulkTag('');
   }
 
   function saveAsDirectory() {
+    if (!selectedContacts.length) return;
+    const ids = selectedContacts.map((c) => c.id);
+
+    if (targetDirId) {
+      const existing = Store.getDirectory(targetDirId);
+      if (!existing || existing.mode !== 'manual') return;
+      const merged = [...new Set([...existing.contactIds, ...ids])];
+      Store.upsertDirectory({ ...existing, contactIds: merged });
+      toast(`Added to “${existing.name}”`);
+      setSaveDirOpen(false);
+      setDirName('');
+      setTargetDirId('');
+      return;
+    }
+
     const name = dirName.trim();
-    if (!name || !selected.size) return;
+    if (!name) return;
+    const sameName = db.directories.find(
+      (d) => d.mode === 'manual' && d.name.toLowerCase() === name.toLowerCase(),
+    );
     Store.upsertDirectory({
-      id: crypto.randomUUID?.() || String(Date.now()),
-      name,
-      notes: '',
+      id: sameName?.id || crypto.randomUUID?.() || String(Date.now()),
+      name: sameName?.name || name,
+      notes: sameName?.notes || '',
       mode: 'manual',
-      contactIds: [...selected],
+      contactIds: ids,
       tags: [],
       match: 'any',
-      created: Date.now(),
+      created: sameName?.created || Date.now(),
       updated: Date.now(),
     });
-    toast(`Saved “${name}”`);
+    toast(sameName ? `Updated “${sameName.name}”` : `Saved “${name}”`);
     setSaveDirOpen(false);
     setDirName('');
+    setTargetDirId('');
   }
 
   const presetTag = tag && tag !== UNTAGGED ? tag : null;
@@ -261,10 +305,10 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         </main>
       )}
 
-      {selected.size > 0 && (
+      {selectedContacts.length > 0 && (
         <footer className="selbar">
           <div className="selbar-info">
-            <b>{selected.size}</b> selected
+            <b>{selectedContacts.length}</b> selected
             <button type="button" className="link" onClick={selectAllShown}>
               Select all shown
             </button>
@@ -276,10 +320,25 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             <button type="button" className="btn" onClick={() => setBulkTagOpen(true)}>
               Tag…
             </button>
-            <button type="button" className="btn" onClick={() => { setDirName(tag && tag !== UNTAGGED ? tag : ''); setSaveDirOpen(true); }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setDirName(tag && tag !== UNTAGGED ? tag : '');
+                setTargetDirId('');
+                setSaveDirOpen(true);
+              }}
+            >
               Save list
             </button>
-            <button type="button" className="btn primary" onClick={() => setPdfOpen(true)}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                setPdfFromSelection(true);
+                setPdfOpen(true);
+              }}
+            >
               Make PDF
             </button>
           </div>
@@ -287,7 +346,7 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       )}
 
       {/* Quick PDF of current filter without selecting */}
-      {db.contacts.length > 0 && selected.size === 0 && visible.length > 0 && (
+      {db.contacts.length > 0 && selectedContacts.length === 0 && visible.length > 0 && (
         <footer className="selbar" style={{ opacity: 0.97 }}>
           <div className="selbar-info">
             <span className="muted">{visible.length} shown</span>
@@ -300,9 +359,7 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
               type="button"
               className="btn primary"
               onClick={() => {
-                const ids = new Set(visible.map((c) => c.id));
-                setSelected(ids);
-                saveSelection(ids);
+                setPdfFromSelection(false);
                 setPdfOpen(true);
               }}
             >
@@ -318,11 +375,20 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
         presetTag={presetTag}
         onClose={() => setEditing(undefined)}
       />
-      <PdfSheet open={pdfOpen} contacts={selectedContacts.length ? selectedContacts : visible} defaultTitle={tag && tag !== UNTAGGED ? tag : 'Contact Sheet'} onClose={() => setPdfOpen(false)} />
+      <PdfSheet
+        open={pdfOpen}
+        contacts={pdfContacts}
+        defaultTitle={tag && tag !== UNTAGGED ? tag : 'Contact Sheet'}
+        onClose={() => {
+          setPdfOpen(false);
+          setPdfFromSelection(false);
+        }}
+      />
 
       <Sheet open={bulkTagOpen} title="Tag selected" onClose={() => setBulkTagOpen(false)}>
         <p className="muted">
-          Add or remove a tag on {selected.size} selected contact{selected.size === 1 ? '' : 's'}.
+          Add or remove a tag on {selectedContacts.length} selected contact
+          {selectedContacts.length === 1 ? '' : 's'}.
         </p>
         <label>
           Tag
@@ -351,20 +417,53 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
       <Sheet
         open={saveDirOpen}
         title="Save directory"
-        onClose={() => setSaveDirOpen(false)}
+        onClose={() => {
+          setSaveDirOpen(false);
+          setTargetDirId('');
+        }}
         right={
-          <button type="button" className="link strong" onClick={saveAsDirectory}>
+          <button
+            type="button"
+            className="link strong"
+            onClick={saveAsDirectory}
+            disabled={!(targetDirId || dirName.trim()) || !selectedContacts.length}
+          >
             Save
           </button>
         }
       >
         <p className="muted">
-          Save {selected.size} selected contact{selected.size === 1 ? '' : 's'} as a named list you can reopen later.
+          Save {selectedContacts.length} selected contact{selectedContacts.length === 1 ? '' : 's'} into a directory.
         </p>
-        <label>
-          Name
-          <input value={dirName} placeholder="e.g. Family 2026" onChange={(e) => setDirName(e.target.value)} />
-        </label>
+        {!!manualDirectories.length && (
+          <label>
+            Add to existing
+            <select
+              value={targetDirId}
+              onChange={(e) => {
+                setTargetDirId(e.target.value);
+                if (e.target.value) setDirName('');
+              }}
+            >
+              <option value="">— New directory —</option>
+              {manualDirectories.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.contactIds.length})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!targetDirId && (
+          <label>
+            Name
+            <input
+              value={dirName}
+              placeholder="e.g. Family 2026"
+              onChange={(e) => setDirName(e.target.value)}
+            />
+          </label>
+        )}
       </Sheet>
     </>
   );

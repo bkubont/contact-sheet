@@ -172,13 +172,17 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     const cw = (W - 2 * M - gap) / 2;
     const inner = cw - 2 * pad;
     const labelW = 54;
+    const maxCardH = bottom - top;
 
     type Block =
       | { kind: 'name'; lines: string[]; h: number }
       | { kind: 'sub'; lines: string[]; h: number }
       | { kind: 'detail'; d: { label: string; text: string; muted?: boolean }; lines: string[]; h: number };
 
-    const measure = (c: Contact) => {
+    const measureBlocks = (blocks: Block[]) =>
+      pad * 2 + blocks.reduce((s, b) => s + b.h, 0) + (blocks.length > 1 ? 3 : 0);
+
+    const buildBlocks = (c: Contact): Block[] => {
       const blocks: Block[] = [];
       set(11, 'bold');
       const nameL = wrap(nameFor(c, o.sort), inner);
@@ -189,24 +193,34 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
         const l = wrap(sub, inner);
         blocks.push({ kind: 'sub', lines: l, h: l.length * 10.5 });
       }
-      set(8.5, 'normal');
       for (const d of detailLines(c, o)) {
+        set(8.5, 'normal');
         const l = wrap(d.text, inner - labelW);
-        blocks.push({ kind: 'detail', d, lines: l, h: l.length * 10.5 + 1.5 });
+        // Split very long detail fields into page-sized chunks of lines.
+        const lineH = 10.5;
+        const maxLines = Math.max(1, Math.floor((maxCardH - pad * 2 - 40) / lineH));
+        for (let i = 0; i < l.length; i += maxLines) {
+          const chunk = l.slice(i, i + maxLines);
+          blocks.push({
+            kind: 'detail',
+            d: i === 0 ? d : { ...d, label: `${d.label} (cont.)` },
+            lines: chunk,
+            h: chunk.length * lineH + 1.5,
+          });
+        }
       }
-      const h = pad * 2 + blocks.reduce((s, b) => s + b.h, 0) + (blocks.length > 1 ? 3 : 0);
-      return { blocks, h };
+      return blocks;
     };
 
-    const drawCard = (m: ReturnType<typeof measure>, x: number, y0: number, h: number) => {
+    const drawCard = (blocks: Block[], x: number, y0: number, h: number) => {
       doc.setDrawColor(...COLORS.line);
       doc.setFillColor(255, 255, 255);
       doc.setLineWidth(0.75);
       doc.roundedRect(x, y0, cw, h, 5, 5, 'S');
       doc.setFillColor(...COLORS.accent);
-      doc.rect(x, y0 + 6, 2.5, h - 12, 'F');
+      doc.rect(x, y0 + 6, 2.5, Math.max(0, h - 12), 'F');
       let yy = y0 + pad + 9;
-      m.blocks.forEach((b, i) => {
+      blocks.forEach((b, i) => {
         if (b.kind === 'name') {
           set(11, 'bold');
           doc.text(b.lines, x + pad, yy);
@@ -214,7 +228,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
           set(8.5, 'italic', COLORS.muted);
           doc.text(b.lines, x + pad, yy - 1);
         } else {
-          if (i > 0 && m.blocks[i - 1].kind !== 'detail') yy += 3;
+          if (i > 0 && blocks[i - 1].kind !== 'detail') yy += 3;
           set(7, 'bold', COLORS.muted);
           doc.text(safe(b.d.label).toUpperCase(), x + pad, yy - 0.5);
           set(8.5, 'normal', b.d.muted ? COLORS.muted : COLORS.text);
@@ -224,13 +238,36 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       });
     };
 
-    for (let i = 0; i < list.length; i += 2) {
-      const a = measure(list[i]);
-      const b = list[i + 1] ? measure(list[i + 1]) : null;
+    /** Pack contacts into card-height chunks that fit one column height. */
+    const cardChunks: { blocks: Block[]; h: number }[] = [];
+    for (const c of list) {
+      const blocks = buildBlocks(c);
+      let chunk: Block[] = [];
+      for (const b of blocks) {
+        const trial = [...chunk, b];
+        if (chunk.length && measureBlocks(trial) > maxCardH) {
+          cardChunks.push({ blocks: chunk, h: measureBlocks(chunk) });
+          if (b.kind === 'detail') {
+            set(11, 'bold');
+            const cont = wrap(`${nameFor(c, o.sort)} (cont.)`, inner);
+            chunk = [{ kind: 'name', lines: cont, h: cont.length * 13 }, b];
+          } else {
+            chunk = [b];
+          }
+        } else {
+          chunk = trial;
+        }
+      }
+      if (chunk.length) cardChunks.push({ blocks: chunk, h: measureBlocks(chunk) });
+    }
+
+    for (let i = 0; i < cardChunks.length; i += 2) {
+      const a = cardChunks[i];
+      const b = cardChunks[i + 1] || null;
       const rowH = Math.max(a.h, b ? b.h : 0);
       if (y + rowH > bottom && y > top + 20) newPage(true);
-      drawCard(a, M, y, rowH);
-      if (b) drawCard(b, M + cw + gap, y, rowH);
+      drawCard(a.blocks, M, y, rowH);
+      if (b) drawCard(b.blocks, M + cw + gap, y, rowH);
       y += rowH + gap;
     }
   }
@@ -242,6 +279,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     const rightX = M + leftW + gap;
     const rightW = W - M - rightX;
     const labelW = 52;
+    const detailLineH = 11.5;
     let lastLetter: string | null = null;
 
     for (const c of list) {
@@ -254,13 +292,14 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       set(8.5, 'italic');
       const subL = subLine(c, o) ? wrap(subLine(c, o), leftW) : [];
       set(9, 'normal');
-      const details = detailLines(c, o).map((d) => ({ d, lines: wrap(d.text, rightW - labelW) }));
-      const leftH = nameL.length * 13 + subL.length * 11;
-      const rightH = details.reduce((s, x) => s + x.lines.length * 11.5 + 2, 0);
-      const h = Math.max(leftH, rightH) + 10;
-      const headH = letter !== lastLetter && o.sort !== 'company' ? 22 : 0;
+      type DetailBlock = { d: { label: string; text: string; muted?: boolean }; lines: string[] };
+      const details: DetailBlock[] = detailLines(c, o).map((d) => ({
+        d,
+        lines: wrap(d.text, rightW - labelW),
+      }));
 
-      if (y + h + headH > bottom) newPage(true);
+      const headH = letter !== lastLetter && o.sort !== 'company' ? 22 : 0;
+      if (y + headH + 40 > bottom) newPage(true);
       if (headH) {
         set(12, 'bold', COLORS.accent);
         doc.text(/[A-Z]/.test(letter) ? letter : '#', M, y + 12);
@@ -268,21 +307,43 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
         lastLetter = letter;
       }
 
+      const nameBlockH = nameL.length * 13 + subL.length * 11;
+      if (y + nameBlockH + 10 > bottom) newPage(true);
+
       set(10.5, 'bold');
       doc.text(nameL, M, y + 9);
       if (subL.length) {
         set(8.5, 'italic', COLORS.muted);
         doc.text(subL, M, y + 9 + nameL.length * 13);
       }
+
       let yy = y + 9;
+      const nameBottom = y + nameBlockH;
       for (const { d, lines } of details) {
-        set(7, 'bold', COLORS.muted);
-        doc.text(safe(d.label).toUpperCase(), rightX, yy - 0.5);
-        set(9, 'normal', d.muted ? COLORS.muted : COLORS.text);
-        doc.text(lines, rightX + labelW, yy);
-        yy += lines.length * 11.5 + 2;
+        let remaining = lines;
+        let label = d.label;
+        while (remaining.length) {
+          const space = bottom - yy;
+          const maxLines = Math.max(1, Math.floor((space - 2) / detailLineH));
+          if (yy + detailLineH > bottom && yy > top + 20) {
+            newPage(true);
+            yy = y + 9;
+            set(10, 'italic', COLORS.muted);
+            doc.text(`${nm} (continued)`, M, yy);
+            yy += 16;
+            label = `${d.label} (cont.)`;
+          }
+          const take = remaining.slice(0, maxLines);
+          remaining = remaining.slice(maxLines);
+          set(7, 'bold', COLORS.muted);
+          doc.text(safe(label).toUpperCase(), rightX, yy - 0.5);
+          set(9, 'normal', d.muted ? COLORS.muted : COLORS.text);
+          doc.text(take, rightX + labelW, yy);
+          yy += take.length * detailLineH + 2;
+          label = `${d.label} (cont.)`;
+        }
       }
-      y += h;
+      y = Math.max(nameBottom, yy) + 10;
       doc.setDrawColor(...COLORS.line);
       doc.setLineWidth(0.5);
       doc.line(M, y - 4, W - M, y - 4);
@@ -311,6 +372,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     const cp = 4;
     const fs = 8;
     const lh = 10;
+    const maxRowContentH = bottom - top - 20;
 
     const headerRow = () => {
       doc.setFillColor(...COLORS.accent);
@@ -350,32 +412,69 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       const cells = cols.map((col) => {
         const t = cellText(c, col.key);
         set(fs, col.key === 'name' ? 'bold' : 'normal');
-        const main = t.main ? wrap(t.main, (col.width || 0) - 2 * cp) : [];
+        let main = t.main ? wrap(t.main, (col.width || 0) - 2 * cp) : [];
         set(fs - 1, 'italic');
         const sub = 'sub' in t && t.sub ? wrap(t.sub, (col.width || 0) - 2 * cp) : [];
-        return { col, main, sub };
+        // Cap a single cell so the row can fit on one page; overflow continues as a follow-up row.
+        const maxLines = Math.max(1, Math.floor((maxRowContentH - 2 * cp) / lh) - sub.length);
+        const overflow = main.slice(maxLines);
+        main = main.slice(0, maxLines);
+        return { col, main, sub, overflow };
       });
-      const rowH = Math.max(...cells.map((x) => x.main.length * lh + x.sub.length * (lh - 1))) + 2 * cp + 1;
-      if (y + rowH > bottom) {
-        newPage(true);
-        headerRow();
-      }
-      if (idx % 2 === 1) {
-        doc.setFillColor(...COLORS.fill);
-        doc.rect(M, y, avail, rowH, 'F');
-      }
-      for (const { col, main, sub } of cells) {
-        set(fs, col.key === 'name' ? 'bold' : 'normal');
-        if (main.length) doc.text(main, (col.x || 0) + cp, y + cp + 7);
-        if (sub.length) {
-          set(fs - 1, 'italic', COLORS.muted);
-          doc.text(sub, (col.x || 0) + cp, y + cp + 7 + main.length * lh);
+
+      const drawRow = (
+        rowCells: { col: Col; main: string[]; sub: string[] }[],
+        zebra: boolean,
+      ) => {
+        const rowH =
+          Math.max(...rowCells.map((cell) => cell.main.length * lh + cell.sub.length * (lh - 1)), lh) +
+          2 * cp +
+          1;
+        if (y + rowH > bottom) {
+          newPage(true);
+          headerRow();
         }
+        if (zebra) {
+          doc.setFillColor(...COLORS.fill);
+          doc.rect(M, y, avail, rowH, 'F');
+        }
+        for (const { col, main, sub } of rowCells) {
+          set(fs, col.key === 'name' ? 'bold' : 'normal');
+          if (main.length) doc.text(main, (col.x || 0) + cp, y + cp + 7);
+          if (sub.length) {
+            set(fs - 1, 'italic', COLORS.muted);
+            doc.text(sub, (col.x || 0) + cp, y + cp + 7 + main.length * lh);
+          }
+        }
+        doc.setDrawColor(...COLORS.line);
+        doc.setLineWidth(0.4);
+        doc.line(M, y + rowH, W - M, y + rowH);
+        y += rowH;
+      };
+
+      drawRow(
+        cells.map(({ col, main, sub }) => ({ col, main, sub })),
+        idx % 2 === 1,
+      );
+
+      // Continue overflowing note/address text on subsequent rows under the same name.
+      let more = true;
+      while (more) {
+        more = false;
+        const cont = cells.map((cell) => {
+          if (!cell.overflow.length) return { col: cell.col, main: [] as string[], sub: [] as string[] };
+          more = true;
+          const maxLines = Math.max(1, Math.floor((maxRowContentH - 2 * cp) / lh));
+          const main = cell.overflow.slice(0, maxLines);
+          cell.overflow = cell.overflow.slice(maxLines);
+          return {
+            col: cell.col,
+            main: cell.col.key === 'name' ? [`${nameFor(c, o.sort)} (cont.)`] : main,
+            sub: [] as string[],
+          };
+        });
+        if (more) drawRow(cont, idx % 2 === 1);
       }
-      doc.setDrawColor(...COLORS.line);
-      doc.setLineWidth(0.4);
-      doc.line(M, y + rowH, W - M, y + rowH);
-      y += rowH;
     });
   }
 

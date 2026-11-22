@@ -15,7 +15,6 @@ export function DirectoriesScreen() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
-  const [mode, setMode] = useState<'manual' | 'smart'>('smart');
   const [smartTags, setSmartTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [match, setMatch] = useState<'any' | 'all'>('any');
@@ -27,7 +26,6 @@ export function DirectoriesScreen() {
 
   function openCreate() {
     setName('');
-    setMode('smart');
     setSmartTags([]);
     setTagInput('');
     setMatch('any');
@@ -46,7 +44,7 @@ export function DirectoriesScreen() {
   function create() {
     const n = name.trim();
     if (!n) return;
-    if (mode === 'smart' && !smartTags.length) {
+    if (!smartTags.length) {
       toast('Add at least one tag');
       return;
     }
@@ -54,9 +52,9 @@ export function DirectoriesScreen() {
       id: newId(),
       name: n,
       notes: '',
-      mode,
+      mode: 'smart',
       contactIds: [],
-      tags: mode === 'smart' ? smartTags : [],
+      tags: smartTags,
       match,
       created: Date.now(),
       updated: Date.now(),
@@ -65,6 +63,14 @@ export function DirectoriesScreen() {
     setCreateOpen(false);
     setActiveId(dir.id);
     toast(`Created “${n}”`);
+  }
+
+  function removeMember(contactId: string) {
+    if (!active || active.mode !== 'manual') return;
+    Store.upsertDirectory({
+      ...active,
+      contactIds: active.contactIds.filter((id) => id !== contactId),
+    });
   }
 
   function removeDir(dir: Directory) {
@@ -113,7 +119,7 @@ export function DirectoriesScreen() {
             <p>
               {active.mode === 'smart'
                 ? 'No one matches these tags right now. Tag contacts on the Contacts tab.'
-                : 'This list is empty. Select contacts and tap Save list.'}
+                : 'This list is empty. On Contacts, select people and tap Save list → Add to existing.'}
             </p>
           </div>
         ) : (
@@ -122,7 +128,11 @@ export function DirectoriesScreen() {
               .slice()
               .sort((a, b) => displayName(a).localeCompare(displayName(b), undefined, { sensitivity: 'base' }))
               .map((c) => (
-                <div key={c.id} className="row" style={{ gridTemplateColumns: '1fr' }}>
+                <div
+                  key={c.id}
+                  className="row"
+                  style={{ gridTemplateColumns: active.mode === 'manual' ? '1fr auto' : '1fr' }}
+                >
                   <div className="row-main">
                     <div className="row-name">{displayName(c)}</div>
                     <div className="row-meta">
@@ -138,6 +148,11 @@ export function DirectoriesScreen() {
                       </div>
                     )}
                   </div>
+                  {active.mode === 'manual' && (
+                    <button type="button" className="link" onClick={() => removeMember(c.id)}>
+                      Remove
+                    </button>
+                  )}
                 </div>
               ))}
           </main>
@@ -186,11 +201,11 @@ export function DirectoriesScreen() {
           <p className="mark">Directories</p>
           <h2>Save the lists you reuse</h2>
           <p>
-            Make a smart directory from tags (always up to date), or save a selection from Contacts.
+            Make a smart directory from tags (always up to date), or on Contacts select people and tap Save list.
           </p>
           <div className="actions">
             <button className="btn primary" onClick={openCreate}>
-              New directory
+              New smart directory
             </button>
           </div>
         </div>
@@ -225,76 +240,61 @@ export function DirectoriesScreen() {
           </button>
         }
       >
+        <p className="muted">
+          Smart directories stay current as you tag contacts. For a fixed list, select people on Contacts and tap Save list.
+        </p>
         <label>
           Name
           <input value={name} placeholder="e.g. School board" onChange={(e) => setName(e.target.value)} />
         </label>
         <fieldset>
-          <legend>Type</legend>
+          <legend>Tags</legend>
+          <div className="pills">
+            {smartTags.map((t) => (
+              <button key={t} type="button" className="pill x" onClick={() => setSmartTags(smartTags.filter((x) => x !== t))}>
+                {t}
+              </button>
+            ))}
+          </div>
+          <input
+            value={tagInput}
+            placeholder="Add tag and press Enter"
+            list="dir-tags"
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addSmartTag(tagInput);
+              }
+            }}
+          />
+          <datalist id="dir-tags">
+            {tagOptions.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+          <div className="suggest">
+            {tagOptions
+              .filter((t) => !smartTags.includes(t))
+              .slice(0, 8)
+              .map((t) => (
+                <button key={t} type="button" onClick={() => addSmartTag(t)}>
+                  + {t}
+                </button>
+              ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Match</legend>
           <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <button type="button" className={mode === 'smart' ? 'on' : ''} onClick={() => setMode('smart')}>
-              Smart (tags)
+            <button type="button" className={match === 'any' ? 'on' : ''} onClick={() => setMatch('any')}>
+              Any tag
             </button>
-            <button type="button" className={mode === 'manual' ? 'on' : ''} onClick={() => setMode('manual')}>
-              Empty list
+            <button type="button" className={match === 'all' ? 'on' : ''} onClick={() => setMatch('all')}>
+              All tags
             </button>
           </div>
         </fieldset>
-        {mode === 'smart' && (
-          <>
-            <fieldset>
-              <legend>Tags</legend>
-              <div className="pills">
-                {smartTags.map((t) => (
-                  <button key={t} type="button" className="pill x" onClick={() => setSmartTags(smartTags.filter((x) => x !== t))}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <input
-                value={tagInput}
-                placeholder="Add tag and press Enter"
-                list="dir-tags"
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addSmartTag(tagInput);
-                  }
-                }}
-              />
-              <datalist id="dir-tags">
-                {tagOptions.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
-              <div className="suggest">
-                {tagOptions
-                  .filter((t) => !smartTags.includes(t))
-                  .slice(0, 8)
-                  .map((t) => (
-                    <button key={t} type="button" onClick={() => addSmartTag(t)}>
-                      + {t}
-                    </button>
-                  ))}
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>Match</legend>
-              <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <button type="button" className={match === 'any' ? 'on' : ''} onClick={() => setMatch('any')}>
-                  Any tag
-                </button>
-                <button type="button" className={match === 'all' ? 'on' : ''} onClick={() => setMatch('all')}>
-                  All tags
-                </button>
-              </div>
-            </fieldset>
-          </>
-        )}
-        {mode === 'manual' && (
-          <p className="muted">Creates an empty saved list. On Contacts, select people and tap Save list to fill one — or use Smart lists for tag-based directories.</p>
-        )}
       </Sheet>
     </>
   );
