@@ -1,177 +1,312 @@
-import { useSyncExternalStore } from 'react';
-import type { Activity, ActivityType, Customer, Db, TagGroup } from '../types';
-import { starterTagGroups, sampleCustomers } from './starter';
+import type { Contact, Db, Directory, LabeledValue } from '../types';
 import { uid } from './util';
 
-// Local-first store: the whole database lives on the device (localStorage) so the app
-// works with no signal. Cloud sync plugs in on top of this in a later milestone.
-const KEY = 'canopy.db.v1';
+const DB_KEY = 'contactSheet.db.v2';
+const LEGACY_CONTACTS = 'contactSheet.contacts.v1';
+const SEL_KEY = 'contactSheet.selected.v1';
 
-function fresh(): Db {
+function clean(s: unknown): string {
+  return (s == null ? '' : String(s)).trim();
+}
+
+function list(arr: unknown): LabeledValue[] {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x: { label?: string; value?: string }) => ({
+      label: clean(x.label) || 'other',
+      value: clean(x.value),
+    }))
+    .filter((x) => x.value);
+}
+
+export function normalizeContact(c: Partial<Contact> & { id?: string }): Contact {
+  const tags = [...new Set((c.tags || []).map(clean).filter(Boolean))];
   return {
-    version: 1,
-    customers: [],
-    tagGroups: starterTagGroups(),
-    activities: [],
-    settings: { businessName: 'Advanced Tree Service', yourName: '', updatedAt: Date.now() },
+    id: c.id || uid(),
+    first: clean(c.first),
+    last: clean(c.last),
+    company: clean(c.company),
+    title: clean(c.title),
+    phones: list(c.phones),
+    emails: list(c.emails),
+    address: clean(c.address),
+    birthday: clean(c.birthday),
+    notes: clean(c.notes),
+    tags,
+    created: c.created || Date.now(),
+    updated: Date.now(),
   };
 }
 
-function load(): Db {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return { ...fresh(), ...JSON.parse(raw) };
-  } catch (e) {
-    console.warn('Could not read saved data', e);
-  }
-  return fresh();
+export function displayName(c: Contact): string {
+  const n = [c.first, c.last].filter(Boolean).join(' ');
+  return n || c.company || c.emails[0]?.value || c.phones[0]?.value || 'No name';
 }
 
-let db: Db = load();
-const listeners = new Set<() => void>();
+function dupeKey(c: Contact): string {
+  const name = [c.first, c.last].join(' ').toLowerCase().replace(/\s+/g, ' ').trim();
+  const phone = c.phones[0] ? c.phones[0].value.replace(/\D/g, '').slice(-10) : '';
+  const email = c.emails[0] ? c.emails[0].value.toLowerCase() : '';
+  return name + '|' + (phone || email || c.company.toLowerCase());
+}
+
+function emptyDb(): Db {
+  return { version: 2, contacts: [], directories: [] };
+}
+
+function migrateLegacy(): Contact[] {
+  try {
+    const raw = localStorage.getItem(LEGACY_CONTACTS);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    return list.map((c) => normalizeContact({ ...c, updated: c.updated || Date.now() }));
+  } catch {
+    return [];
+  }
+}
+
+function loadDb(): Db {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Db;
+      if (parsed?.version === 2 && Array.isArray(parsed.contacts)) {
+        return {
+          version: 2,
+          contacts: parsed.contacts.map((c) => normalizeContact({ ...c, updated: c.updated || Date.now() })),
+          directories: Array.isArray(parsed.directories) ? parsed.directories : [],
+        };
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  const contacts = migrateLegacy();
+  const db: Db = { version: 2, contacts, directories: [] };
+  if (contacts.length) persist(db);
+  return db;
+}
+
+function persist(db: Db): boolean {
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    // Keep legacy key in sync so older installs / backups stay compatible.
+    localStorage.setItem(LEGACY_CONTACTS, JSON.stringify(db.contacts));
+    return true;
+  } catch (e) {
+    alert('Could not save — this device may be out of storage space.\n\n' + (e as Error).message);
+    return false;
+  }
+}
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+let db = loadDb();
+
+function emit() {
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
 
 function commit(next: Db) {
   db = next;
+  persist(db);
+  emit();
+}
+
+if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+  navigator.storage.persist().catch(() => {});
+}
+
+export function loadSelection(): Set<string> {
   try {
-    localStorage.setItem(KEY, JSON.stringify(db));
-  } catch (e) {
-    console.error('Could not save. This device may be out of storage space.', e);
+    const raw = localStorage.getItem(SEL_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
   }
-  listeners.forEach((l) => l());
 }
 
-export function useDb(): Db {
-  return useSyncExternalStore(
-    (l) => { listeners.add(l); return () => listeners.delete(l); },
-    () => db,
-  );
-}
-
-export const getDb = () => db;
-
-// ---------- helpers ----------
-
-export function stageGroup(d: Db = db): TagGroup | undefined {
-  return d.tagGroups.find((g) => g.pipeline);
-}
-
-export function stageOf(c: Customer, d: Db = db) {
-  const g = stageGroup(d);
-  return g?.tags.find((t) => c.tagIds.includes(t.id));
-}
-
-export function tagById(id: string, d: Db = db) {
-  for (const g of d.tagGroups) {
-    const t = g.tags.find((x) => x.id === id);
-    if (t) return { tag: t, group: g };
+export function saveSelection(ids: Set<string>) {
+  try {
+    localStorage.setItem(SEL_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
   }
-  return undefined;
 }
 
-function activity(customerId: string, type: ActivityType, body: string): Activity {
-  const now = Date.now();
-  return { id: uid(), customerId, type, body, at: now, updatedAt: now };
-}
-
-// ---------- customers ----------
-
-export function saveCustomer(c: Customer): Customer {
-  const now = Date.now();
-  const exists = db.customers.some((x) => x.id === c.id);
-  const next = { ...c, updatedAt: now, createdAt: c.createdAt || now };
-  commit({
-    ...db,
-    customers: exists ? db.customers.map((x) => (x.id === c.id ? next : x)) : [...db.customers, next],
-    activities: exists ? db.activities : [...db.activities, activity(c.id, 'created', 'Added')],
-  });
-  return next;
-}
-
-export function deleteCustomer(id: string) {
-  commit({ ...db, customers: db.customers.filter((c) => c.id !== id), activities: db.activities.filter((a) => a.customerId !== id) });
-}
-
-export function newCustomer(partial: Partial<Customer> = {}): Customer {
-  return {
-    id: uid(), first: '', last: '', company: '', phones: [], emails: [], properties: [],
-    tagIds: [], notes: '', createdAt: 0, updatedAt: 0, ...partial,
-  };
-}
-
-// Toggle a tag, respecting "pick one" groups. Stage changes are logged on the timeline.
-export function toggleTag(customerId: string, tagId: string) {
-  const found = tagById(tagId);
-  if (!found) return;
-  const { group, tag } = found;
-  const acts: Activity[] = [];
-  const customers = db.customers.map((c) => {
-    if (c.id !== customerId) return c;
-    let tagIds = c.tagIds;
-    if (tagIds.includes(tagId)) {
-      tagIds = tagIds.filter((t) => t !== tagId);
-    } else {
-      if (group.mode === 'one') tagIds = tagIds.filter((t) => !group.tags.some((gt) => gt.id === t));
-      tagIds = [...tagIds, tagId];
-      if (group.pipeline) acts.push(activity(c.id, 'stage', `Stage → ${tag.name}`));
+export const Store = {
+  subscribe(fn: Listener) {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
+  },
+  getSnapshot(): Db {
+    return db;
+  },
+  all(): Contact[] {
+    return db.contacts;
+  },
+  get(id: string): Contact | undefined {
+    return db.contacts.find((c) => c.id === id);
+  },
+  directories(): Directory[] {
+    return db.directories;
+  },
+  getDirectory(id: string): Directory | undefined {
+    return db.directories.find((d) => d.id === id);
+  },
+  upsert(c: Partial<Contact> & { id?: string }): Contact {
+    const n = normalizeContact(c);
+    const contacts = [...db.contacts];
+    const i = contacts.findIndex((x) => x.id === n.id);
+    if (i >= 0) {
+      n.created = contacts[i].created;
+      contacts[i] = n;
+    } else contacts.push(n);
+    commit({ ...db, contacts });
+    return n;
+  },
+  remove(id: string) {
+    commit({
+      ...db,
+      contacts: db.contacts.filter((c) => c.id !== id),
+      directories: db.directories.map((d) =>
+        d.mode === 'manual'
+          ? { ...d, contactIds: d.contactIds.filter((x) => x !== id), updated: Date.now() }
+          : d,
+      ),
+    });
+  },
+  addMany(list: Partial<Contact>[], { skipDupes = true, tag = '' }: { skipDupes?: boolean; tag?: string } = {}) {
+    const seen = new Set(db.contacts.map(dupeKey));
+    const contacts = [...db.contacts];
+    let added = 0;
+    let skipped = 0;
+    for (const raw of list) {
+      const c = normalizeContact({ ...raw, id: undefined });
+      if (tag && !c.tags.includes(tag)) c.tags.push(tag);
+      const k = dupeKey(c);
+      if (skipDupes && seen.has(k)) {
+        skipped++;
+        continue;
+      }
+      seen.add(k);
+      contacts.push(c);
+      added++;
     }
-    return { ...c, tagIds, updatedAt: Date.now() };
-  });
-  commit({ ...db, customers, activities: [...db.activities, ...acts] });
-}
-
-// Create a new tag in a group that allows it (e.g. Job flags) and put it on the customer.
-export function addNewTag(customerId: string, groupId: string, name: string) {
-  const group = db.tagGroups.find((g) => g.id === groupId);
-  if (!group || !name.trim()) return;
-  const existing = group.tags.find((t) => t.name.toLowerCase() === name.trim().toLowerCase());
-  const tag = existing || { id: `${groupId}-${uid().slice(0, 8)}`, name: name.trim() };
-  const tagGroups = existing ? db.tagGroups : db.tagGroups.map((g) => (g.id === groupId ? { ...g, tags: [...g.tags, tag], updatedAt: Date.now() } : g));
-  commit({
-    ...db,
-    tagGroups,
-    customers: db.customers.map((c) => (c.id === customerId && !c.tagIds.includes(tag.id) ? { ...c, tagIds: [...c.tagIds, tag.id], updatedAt: Date.now() } : c)),
-  });
-}
-
-export function logActivity(customerId: string, type: ActivityType, body: string) {
-  commit({ ...db, activities: [...db.activities, activity(customerId, type, body)] });
-}
-
-// ---------- bulk ----------
-
-function dupeKey(c: Customer) {
-  const name = [c.first, c.last, c.company].join(' ').toLowerCase().replace(/\s+/g, ' ').trim();
-  const phone = c.phones[0]?.value.replace(/\D/g, '').slice(-10) || '';
-  return name + '|' + (phone || c.emails[0]?.value.toLowerCase() || '');
-}
-
-export function importCustomers(list: Customer[], extraTagIds: string[] = []) {
-  const seen = new Set(db.customers.map(dupeKey));
-  const added: Customer[] = [];
-  let skipped = 0;
-  for (const c of list) {
-    const k = dupeKey(c);
-    if (seen.has(k)) { skipped++; continue; }
-    seen.add(k);
-    added.push({ ...c, tagIds: [...new Set([...c.tagIds, ...extraTagIds])] });
-  }
-  commit({
-    ...db,
-    customers: [...db.customers, ...added],
-    activities: [...db.activities, ...added.map((c) => ({ ...activity(c.id, 'imported', c.sample ? 'Sample customer' : 'Imported from contact file'), at: c.sample ? c.createdAt : Date.now() }))],
-  });
-  return { added: added.length, skipped };
-}
-
-export function loadSamples() {
-  importCustomers(sampleCustomers());
-}
-
-export function clearSamples() {
-  const ids = new Set(db.customers.filter((c) => c.sample).map((c) => c.id));
-  commit({ ...db, customers: db.customers.filter((c) => !ids.has(c.id)), activities: db.activities.filter((a) => !ids.has(a.customerId)) });
-}
-
-export function replaceDb(next: Db) {
-  commit({ ...fresh(), ...next });
-}
+    commit({ ...db, contacts });
+    return { added, skipped };
+  },
+  replaceAll(list: Contact[]) {
+    commit({
+      ...db,
+      contacts: list.map((c) => ({ ...normalizeContact(c), created: c.created || Date.now() })),
+    });
+  },
+  tagCounts(): [string, number][] {
+    const m = new Map<string, number>();
+    for (const c of db.contacts) for (const t of c.tags) m.set(t, (m.get(t) || 0) + 1);
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
+  },
+  renameTag(from: string, to: string) {
+    to = to.trim();
+    if (!to) return;
+    commit({
+      ...db,
+      contacts: db.contacts.map((c) => {
+        if (!c.tags.includes(from)) return c;
+        return {
+          ...c,
+          tags: [...new Set(c.tags.map((t) => (t === from ? to : t)).filter(Boolean))],
+          updated: Date.now(),
+        };
+      }),
+      directories: db.directories.map((d) => ({
+        ...d,
+        tags: d.tags.map((t) => (t === from ? to : t)),
+        updated: d.tags.includes(from) ? Date.now() : d.updated,
+      })),
+    });
+  },
+  deleteTag(tag: string) {
+    commit({
+      ...db,
+      contacts: db.contacts.map((c) => {
+        if (!c.tags.includes(tag)) return c;
+        return { ...c, tags: c.tags.filter((t) => t !== tag), updated: Date.now() };
+      }),
+      directories: db.directories.map((d) => ({
+        ...d,
+        tags: d.tags.filter((t) => t !== tag),
+        updated: d.tags.includes(tag) ? Date.now() : d.updated,
+      })),
+    });
+  },
+  bulkTag(ids: string[], tag: string, add: boolean) {
+    const set = new Set(ids);
+    commit({
+      ...db,
+      contacts: db.contacts.map((c) => {
+        if (!set.has(c.id)) return c;
+        const had = c.tags.includes(tag);
+        if (add && !had) return { ...c, tags: [...c.tags, tag], updated: Date.now() };
+        if (!add && had) return { ...c, tags: c.tags.filter((t) => t !== tag), updated: Date.now() };
+        return c;
+      }),
+    });
+  },
+  upsertDirectory(d: Directory): Directory {
+    const directories = [...db.directories];
+    const i = directories.findIndex((x) => x.id === d.id);
+    const next = { ...d, updated: Date.now() };
+    if (i >= 0) directories[i] = next;
+    else directories.push(next);
+    commit({ ...db, directories });
+    return next;
+  },
+  removeDirectory(id: string) {
+    commit({ ...db, directories: db.directories.filter((d) => d.id !== id) });
+  },
+  /** Resolve a directory to its current contact members. */
+  membersOf(dir: Directory): Contact[] {
+    if (dir.mode === 'manual') {
+      const set = new Set(dir.contactIds);
+      return db.contacts.filter((c) => set.has(c.id));
+    }
+    if (!dir.tags.length) return [];
+    return db.contacts.filter((c) => {
+      if (dir.match === 'all') return dir.tags.every((t) => c.tags.includes(t));
+      return dir.tags.some((t) => c.tags.includes(t));
+    });
+  },
+  displayName,
+  exportBackup(): string {
+    return JSON.stringify(db, null, 2);
+  },
+  importBackup(json: string) {
+    const parsed = JSON.parse(json) as Db | Contact[];
+    if (Array.isArray(parsed)) {
+      commit({ version: 2, contacts: parsed.map((c) => normalizeContact(c)), directories: db.directories });
+      return;
+    }
+    if (parsed?.version === 2) {
+      commit({
+        version: 2,
+        contacts: (parsed.contacts || []).map((c) => normalizeContact(c)),
+        directories: parsed.directories || [],
+      });
+      return;
+    }
+    throw new Error('Unrecognized backup format');
+  },
+  wipe() {
+    commit(emptyDb());
+  },
+};

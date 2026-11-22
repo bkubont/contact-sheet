@@ -1,30 +1,38 @@
-# Canopy Clients (app) — retired
+# Contact Sheet (React)
 
-**Status: frozen / retired.** This folder is the old company CRM (Canopy Clients). It is **no longer a product** people should open or deploy.
+Personal contact directory: master list with tags, saved directories, and printable PDFs.
 
-Company CRM now lives in **[Canopy Estimate](https://github.com/bkubont/canopy-estimate)** (the Canopy company PWA). Do not add features here; keep the code only as a historical reference for the migration.
+This is the **active product** for this repo. The older vanilla PWA at the repository root is kept only for reference / migration of existing Home Screen installs; new work happens here.
 
-The personal **Contact Sheet** product continues at the **repo root** (App Store track). That is separate from this company CRM.
+## Features
+
+- **Master contacts list** — search, tag chips, multi-select
+- **Tags** — per contact, bulk tag, rename/delete, filter including Untagged
+- **Directories** — smart lists (by tags) or saved selections you can reopen
+- **PDF** — cover page, list / cards / table layouts, field toggles, share or download
+- **Import / export** — `.vcf` / `.csv` in, `.vcf` out, JSON backup/restore
+- Migrates contacts from the legacy `contactSheet.contacts.v1` localStorage key
+
+## Develop
 
 ```bash
-# Historical local build only — not for production deploy
 cd app
 npm install
 npm run dev
-npm run build          # → app/dist (do not upload to Hostinger)
-npm run build:preview  # → app/preview-dist/index.html
 ```
 
-## Former milestones (archived)
-1. **People & customer cards** — tree-service tags, properties with hazards/access, timeline, import, Today basics
-2. Job calendar (never shipped here — Estimate calendar is canonical)
-3. Accounts, cloud sync & Quo texting
-4. Smart lists, follow-ups, tag editor
-5. Printouts and Hostinger deploy
+## Build
 
-## Layout (reference)
-- `src/types.ts`: data model (customers, properties, tag groups, activity)
-- `src/lib/store.ts`: on-device database (localStorage; never had company cloud sync)
-- `src/lib/starter.ts`: tree-service starter tags and sample customers
-- `src/lib/importers.ts`: .vcf / .csv contact import
-- `src/screens/*`: Today, People, customer card, edit form, More
+```bash
+cd app
+npm run build
+```
+
+Static output is in `app/dist/` (relative asset paths, works on GitHub Pages or any static host).
+
+## Typical use
+
+1. Import contacts (menu → Import)
+2. Tag people (Family, School, …)
+3. Filter → **PDF these**, or select → **Save list** / **Make PDF**
+4. Or open **Directories** → new smart list from tags → Make PDF
