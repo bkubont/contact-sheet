@@ -57,7 +57,7 @@ Bug fixes come first because they are cheap and affect everything after.
 ## 1. Theme: logo blue and gold, used with restraint
 
 ### Source: the Romulus logo
-Colors sampled from the logo (`app/public/romulus-logo.jpg`):
+Colors sampled from the logo (`docs/brand/romulus-logo.jpg`):
 
 | Logo region | Sampled |
 |---|---|
@@ -205,7 +205,7 @@ Each phase can ship on its own. The app stays usable between phases.
 | Phase | Scope | Size |
 |---|---|---|
 | **1. Fixes** | B1, B2, B4, B5, B7, B10 (defaults only) **— done 2026-11-23**; B11 publishing (see §5) | S |
-| **2. Theme** | §1 tokens, cut gold uses, flat surfaces, grouped list, logo icons, dark mode, PDF themes, install banner | M |
+| **2. Theme** | §1 tokens, cut gold uses, flat surfaces, grouped list, logo icons, dark mode, PDF themes, install banner **— done 2026-11-23** (category colors wait for phase 3's palette) | M |
 | **3. Tag color model** | Db v4, palette, migration, group colors, category palette keys | M |
 | **4. Navigation** | 4 tabs, Settings, Tags screen, Select mode, selection bar, filter sheet (B3), sheet pattern, Confirm/Prompt sheets (B6, B9), sidebar on tablet | L |
 | **5. Tag UI** | Colored avatars and dots, editor chips, tri-state bulk tag, multi-filter, PDF legend | M |

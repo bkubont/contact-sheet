@@ -291,7 +291,7 @@ export function DirectoriesScreen() {
     <>
       <header className="topbar">
         <div className="topbar-row">
-          <div style={{ width: 42 }} />
+          <span className="logo-tile" aria-hidden="true" />
           <h1 className="brand">
             Directories
             <span>{db.directories.length || ''}</span>

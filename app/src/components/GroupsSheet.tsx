@@ -127,7 +127,7 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
                         padding: 0,
                         borderRadius: 4,
                         background: c,
-                        border: cat.color === c ? '2px solid #0f172a' : '1px solid transparent',
+                        border: cat.color === c ? '2px solid var(--text)' : '1px solid transparent',
                       }}
                     />
                   ))}

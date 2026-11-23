@@ -5,6 +5,9 @@ import '@fontsource-variable/fraunces/wght.css';
 import './styles.css';
 import App from './App';
 import { Sync } from './lib/sync';
+import { applyAppearance } from './lib/theme';
+
+applyAppearance();
 
 Sync.startSync();
 

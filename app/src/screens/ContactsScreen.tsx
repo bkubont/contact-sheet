@@ -258,6 +258,7 @@ export function ContactsScreen({
             </svg>
             {syncDot && <span className={`sync-dot ${syncDot === 'ok' ? '' : syncDot}`} />}
           </button>
+          <span className="logo-tile" aria-hidden="true" />
           <h1 className="brand">
             Contact Sheet
             <span>{db.contacts.length || ''}</span>

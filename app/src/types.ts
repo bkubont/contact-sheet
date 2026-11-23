@@ -132,8 +132,10 @@ export const DEFAULT_PDF: PdfOptions = {
 };
 
 export const PDF_THEMES: Record<PdfTheme, { label: string; accent: [number, number, number]; soft: [number, number, number]; gold: [number, number, number] }> = {
-  royal: { label: 'Royal blue', accent: [30, 58, 138], soft: [219, 234, 254], gold: [217, 119, 6] },
-  gold: { label: 'Gold', accent: [180, 83, 9], soft: [254, 243, 199], gold: [245, 158, 11] },
-  navy: { label: 'Deep navy', accent: [15, 23, 42], soft: [226, 232, 240], gold: [212, 175, 55] },
-  charcoal: { label: 'Charcoal', accent: [51, 65, 85], soft: [241, 245, 249], gold: [217, 119, 6] },
+  // Romulus royal blue with a thin gold rule (default)
+  royal: { label: 'Royal blue', accent: [15, 42, 122], soft: [232, 237, 249], gold: [201, 150, 46] },
+  // Antique gold headings for a warmer sheet (kept as "gold" so saved choices still work)
+  gold: { label: 'Antique gold', accent: [138, 100, 24], soft: [251, 243, 224], gold: [201, 150, 46] },
+  navy: { label: 'Midnight', accent: [7, 14, 36], soft: [230, 235, 247], gold: [212, 165, 58] },
+  charcoal: { label: 'Charcoal', accent: [51, 56, 66], soft: [241, 242, 244], gold: [201, 150, 46] },
 };

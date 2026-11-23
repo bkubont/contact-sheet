@@ -257,11 +257,6 @@ export function ContactEditor({
                     key={t}
                     type="button"
                     className={tags.includes(t) ? 'pill gold' : undefined}
-                    style={
-                      tags.includes(t)
-                        ? undefined
-                        : { border: '1px dashed var(--line)', borderRadius: 4, padding: '4px 10px' }
-                    }
                     onClick={() => toggleGroupTag(t)}
                   >
                     {tags.includes(t) ? t : `+ ${t}`}
