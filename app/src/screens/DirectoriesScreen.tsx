@@ -14,22 +14,34 @@ export function DirectoriesScreen() {
   const db = useDb();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [name, setName] = useState('');
   const [smartTags, setSmartTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [match, setMatch] = useState<'any' | 'all'>('any');
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const active = activeId ? Store.getDirectory(activeId) : null;
   const members = useMemo(() => (active ? Store.membersOf(active) : []), [active, db]);
   const tagOptions = Store.tagCounts().map(([t]) => t);
 
   function openCreate() {
+    setEditingId(null);
     setName('');
     setSmartTags([]);
     setTagInput('');
     setMatch('any');
     setCreateOpen(true);
+  }
+
+  function openEdit(dir: Directory) {
+    setEditingId(dir.id);
+    setName(dir.name);
+    setSmartTags([...dir.tags]);
+    setTagInput('');
+    setMatch(dir.match);
+    setEditOpen(true);
   }
 
   function addSmartTag(raw: string) {
@@ -65,6 +77,26 @@ export function DirectoriesScreen() {
     toast(`Created “${n}”`);
   }
 
+  function saveEdit() {
+    if (!editingId) return;
+    const existing = Store.getDirectory(editingId);
+    if (!existing) return;
+    const n = name.trim();
+    if (!n) return;
+    if (existing.mode === 'smart' && !smartTags.length) {
+      toast('Add at least one tag');
+      return;
+    }
+    Store.upsertDirectory({
+      ...existing,
+      name: n,
+      tags: existing.mode === 'smart' ? smartTags : existing.tags,
+      match: existing.mode === 'smart' ? match : existing.match,
+    });
+    setEditOpen(false);
+    toast('Directory updated');
+  }
+
   function removeMember(contactId: string) {
     if (!active || active.mode !== 'manual') return;
     Store.upsertDirectory({
@@ -80,6 +112,59 @@ export function DirectoriesScreen() {
     toast('Directory deleted');
   }
 
+  const tagEditor = (
+    <>
+      <fieldset>
+        <legend>Tags</legend>
+        <div className="pills">
+          {smartTags.map((t) => (
+            <button key={t} type="button" className="pill x" onClick={() => setSmartTags(smartTags.filter((x) => x !== t))}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <input
+          value={tagInput}
+          placeholder="Add tag and press Enter"
+          list="dir-tags"
+          onChange={(e) => setTagInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addSmartTag(tagInput);
+            }
+          }}
+        />
+        <datalist id="dir-tags">
+          {tagOptions.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
+        <div className="suggest">
+          {tagOptions
+            .filter((t) => !smartTags.includes(t))
+            .slice(0, 8)
+            .map((t) => (
+              <button key={t} type="button" onClick={() => addSmartTag(t)}>
+                + {t}
+              </button>
+            ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Match</legend>
+        <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <button type="button" className={match === 'any' ? 'on' : ''} onClick={() => setMatch('any')}>
+            Any tag
+          </button>
+          <button type="button" className={match === 'all' ? 'on' : ''} onClick={() => setMatch('all')}>
+            All tags
+          </button>
+        </div>
+      </fieldset>
+    </>
+  );
+
   if (active) {
     return (
       <>
@@ -94,10 +179,10 @@ export function DirectoriesScreen() {
               {active.name}
               <span>{members.length}</span>
             </h1>
-            <button className="icon-btn accent" aria-label="Make PDF" onClick={() => setPdfOpen(true)} disabled={!members.length}>
+            <button className="icon-btn" aria-label="Edit directory" onClick={() => openEdit(active)}>
               <svg viewBox="0 0 24 24">
-                <path d="M6 4h9l5 5v11H6z" />
-                <path d="M14 4v6h6" />
+                <path d="M4 20h4l10-10-4-4L4 16v4z" />
+                <path d="M13 7l4 4" />
               </svg>
             </button>
           </div>
@@ -160,8 +245,11 @@ export function DirectoriesScreen() {
 
         <footer className="selbar">
           <div className="selbar-info">
+            <button type="button" className="link" onClick={() => openEdit(active)}>
+              Edit
+            </button>
             <button type="button" className="link danger" onClick={() => removeDir(active)}>
-              Delete directory
+              Delete
             </button>
           </div>
           <div className="selbar-actions">
@@ -172,6 +260,29 @@ export function DirectoriesScreen() {
         </footer>
 
         <PdfSheet open={pdfOpen} contacts={members} defaultTitle={active.name} onClose={() => setPdfOpen(false)} />
+
+        <Sheet
+          open={editOpen}
+          title="Edit directory"
+          onClose={() => setEditOpen(false)}
+          right={
+            <button type="button" className="link strong" onClick={saveEdit}>
+              Save
+            </button>
+          }
+        >
+          <label>
+            Name
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          {active.mode === 'smart' && tagEditor}
+          {active.mode === 'manual' && (
+            <p className="muted">
+              To add people, select them on Contacts and use Save list → Add to existing. Remove members with Remove on
+              each row.
+            </p>
+          )}
+        </Sheet>
       </>
     );
   }
@@ -241,60 +352,14 @@ export function DirectoriesScreen() {
         }
       >
         <p className="muted">
-          Smart directories stay current as you tag contacts. For a fixed list, select people on Contacts and tap Save list.
+          Smart directories stay current as you tag contacts. For a fixed list, select people on Contacts and tap Save
+          list.
         </p>
         <label>
           Name
           <input value={name} placeholder="e.g. School board" onChange={(e) => setName(e.target.value)} />
         </label>
-        <fieldset>
-          <legend>Tags</legend>
-          <div className="pills">
-            {smartTags.map((t) => (
-              <button key={t} type="button" className="pill x" onClick={() => setSmartTags(smartTags.filter((x) => x !== t))}>
-                {t}
-              </button>
-            ))}
-          </div>
-          <input
-            value={tagInput}
-            placeholder="Add tag and press Enter"
-            list="dir-tags"
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addSmartTag(tagInput);
-              }
-            }}
-          />
-          <datalist id="dir-tags">
-            {tagOptions.map((t) => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
-          <div className="suggest">
-            {tagOptions
-              .filter((t) => !smartTags.includes(t))
-              .slice(0, 8)
-              .map((t) => (
-                <button key={t} type="button" onClick={() => addSmartTag(t)}>
-                  + {t}
-                </button>
-              ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Match</legend>
-          <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <button type="button" className={match === 'any' ? 'on' : ''} onClick={() => setMatch('any')}>
-              Any tag
-            </button>
-            <button type="button" className={match === 'all' ? 'on' : ''} onClick={() => setMatch('all')}>
-              All tags
-            </button>
-          </div>
-        </fieldset>
+        {tagEditor}
       </Sheet>
     </>
   );

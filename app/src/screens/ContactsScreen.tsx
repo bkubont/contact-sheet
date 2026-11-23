@@ -5,7 +5,8 @@ import { useDb } from '../hooks/useStore';
 import { ContactEditor } from '../components/ContactEditor';
 import { PdfSheet } from '../components/PdfSheet';
 import { Sheet } from '../components/Sheet';
-import { toast } from '../lib/util';
+import { downloadBlob, toast } from '../lib/util';
+import { toVCard } from '../lib/importers';
 
 const UNTAGGED = '__untagged__';
 
@@ -35,7 +36,13 @@ function matches(c: Contact, q: string) {
     .every((w) => hay.includes(w));
 }
 
-export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
+export function ContactsScreen({
+  onOpenMenu,
+  syncDot = null,
+}: {
+  onOpenMenu: () => void;
+  syncDot?: string | null;
+}) {
   const db = useDb();
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
@@ -49,6 +56,7 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [saveDirOpen, setSaveDirOpen] = useState(false);
   const [dirName, setDirName] = useState('');
   const [targetDirId, setTargetDirId] = useState<string>('');
+  const [sameNameMode, setSameNameMode] = useState<'merge' | 'replace'>('merge');
 
   const counts = useMemo(() => Store.tagCounts(), [db]);
   const untaggedCount = useMemo(() => db.contacts.filter((c) => !c.tags.length).length, [db]);
@@ -158,21 +166,60 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     const sameName = db.directories.find(
       (d) => d.mode === 'manual' && d.name.toLowerCase() === name.toLowerCase(),
     );
-    Store.upsertDirectory({
-      id: sameName?.id || crypto.randomUUID?.() || String(Date.now()),
-      name: sameName?.name || name,
-      notes: sameName?.notes || '',
-      mode: 'manual',
-      contactIds: ids,
-      tags: [],
-      match: 'any',
-      created: sameName?.created || Date.now(),
-      updated: Date.now(),
-    });
-    toast(sameName ? `Updated “${sameName.name}”` : `Saved “${name}”`);
+    if (sameName) {
+      const contactIds =
+        sameNameMode === 'merge' ? [...new Set([...sameName.contactIds, ...ids])] : ids;
+      if (
+        sameNameMode === 'replace' &&
+        !confirm(
+          `Replace all ${sameName.contactIds.length} members of “${sameName.name}” with the ${ids.length} selected?`,
+        )
+      )
+        return;
+      Store.upsertDirectory({ ...sameName, contactIds });
+      toast(sameNameMode === 'merge' ? `Merged into “${sameName.name}”` : `Replaced “${sameName.name}”`);
+    } else {
+      Store.upsertDirectory({
+        id: crypto.randomUUID?.() || String(Date.now()),
+        name,
+        notes: '',
+        mode: 'manual',
+        contactIds: ids,
+        tags: [],
+        match: 'any',
+        created: Date.now(),
+        updated: Date.now(),
+      });
+      toast(`Saved “${name}”`);
+    }
     setSaveDirOpen(false);
     setDirName('');
     setTargetDirId('');
+    setSameNameMode('merge');
+  }
+
+  const collidingDir =
+    !targetDirId && dirName.trim()
+      ? db.directories.find(
+          (d) => d.mode === 'manual' && d.name.toLowerCase() === dirName.trim().toLowerCase(),
+        )
+      : undefined;
+
+  function bulkDelete() {
+    const n = selectedContacts.length;
+    if (!n) return;
+    if (!confirm(`Delete ${n} selected contact${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    Store.removeMany(selectedContacts.map((c) => c.id));
+    clearSel();
+    toast(`Deleted ${n}`);
+  }
+
+  function exportSelected() {
+    const list = selectedContacts.length ? selectedContacts : visible;
+    if (!list.length) return;
+    const blob = new Blob([toVCard(list)], { type: 'text/vcard' });
+    downloadBlob(blob, `contacts-${list.length}.vcf`);
+    toast(`Exported ${list.length}`);
   }
 
   const presetTag = tag && tag !== UNTAGGED ? tag : null;
@@ -181,10 +228,11 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
     <>
       <header className="topbar">
         <div className="topbar-row">
-          <button className="icon-btn" aria-label="Menu" onClick={onOpenMenu}>
+          <button className="icon-btn" aria-label="Menu" onClick={onOpenMenu} style={{ position: 'relative' }}>
             <svg viewBox="0 0 24 24">
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
+            {syncDot && <span className={`sync-dot ${syncDot === 'ok' ? '' : syncDot}`} />}
           </button>
           <h1 className="brand">
             Contact Sheet
@@ -320,12 +368,19 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             <button type="button" className="btn" onClick={() => setBulkTagOpen(true)}>
               Tag…
             </button>
+            <button type="button" className="btn" onClick={exportSelected}>
+              Export
+            </button>
+            <button type="button" className="btn" onClick={bulkDelete}>
+              Delete
+            </button>
             <button
               type="button"
               className="btn"
               onClick={() => {
                 setDirName(tag && tag !== UNTAGGED ? tag : '');
                 setTargetDirId('');
+                setSameNameMode('merge');
                 setSaveDirOpen(true);
               }}
             >
@@ -352,6 +407,9 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
             <span className="muted">{visible.length} shown</span>
             <button type="button" className="link" onClick={selectAllShown}>
               Select all
+            </button>
+            <button type="button" className="link" onClick={exportSelected}>
+              Export shown
             </button>
           </div>
           <div className="selbar-actions">
@@ -463,6 +521,32 @@ export function ContactsScreen({ onOpenMenu }: { onOpenMenu: () => void }) {
               onChange={(e) => setDirName(e.target.value)}
             />
           </label>
+        )}
+        {collidingDir && (
+          <fieldset>
+            <legend>“{collidingDir.name}” already exists ({collidingDir.contactIds.length})</legend>
+            <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <button
+                type="button"
+                className={sameNameMode === 'merge' ? 'on' : ''}
+                onClick={() => setSameNameMode('merge')}
+              >
+                Merge
+              </button>
+              <button
+                type="button"
+                className={sameNameMode === 'replace' ? 'on' : ''}
+                onClick={() => setSameNameMode('replace')}
+              >
+                Replace
+              </button>
+            </div>
+            <p className="muted" style={{ marginTop: 8 }}>
+              {sameNameMode === 'merge'
+                ? 'Add the selection to the existing members.'
+                : 'Discard current members and keep only the selection.'}
+            </p>
+          </fieldset>
         )}
       </Sheet>
     </>
