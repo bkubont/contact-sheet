@@ -3,6 +3,7 @@ import type { Contact, LabeledValue } from '../types';
 import { Store } from '../lib/store';
 import { useDb } from '../hooks/useStore';
 import { Sheet } from './Sheet';
+import { WorkHistory } from './WorkHistory';
 
 const PHONE_LABELS = ['mobile', 'home', 'work', 'main', 'fax', 'other'];
 const EMAIL_LABELS = ['home', 'work', 'other'];
@@ -218,6 +219,8 @@ export function ContactEditor({
           ))}
         </select>
       </label>
+
+      {contact && <WorkHistory contact={contact} />}
 
       <MultiRows kind="Phone" labels={PHONE_LABELS} rows={phones} onChange={setPhones} />
       <MultiRows kind="Email" labels={EMAIL_LABELS} rows={emails} onChange={setEmails} />

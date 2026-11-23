@@ -18,6 +18,14 @@ export interface TagGroup {
   tags: string[];
 }
 
+/** Link from a personal contact to a customer in Canopy Estimate (same Supabase project). */
+export interface CanopyLink {
+  orgId: string;
+  customerId: string;
+  /** Customer name at the time of linking, shown when offline. */
+  name: string;
+}
+
 export interface Contact {
   id: string;
   first: string;
@@ -32,6 +40,8 @@ export interface Contact {
   tags: string[];
   /** Primary category id (from Db.categories), or empty. */
   category: string;
+  /** Set when this person is linked to a Canopy Estimate customer. */
+  canopy?: CanopyLink | null;
   created: number;
   updated: number;
 }
@@ -94,7 +104,7 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
 ];
 
 export const DEFAULT_TAG_GROUPS: TagGroup[] = [
-  { id: 'tg-relationship', name: 'Relationship', tags: ['Family', 'Friend', 'Spouse', 'Partner', 'Neighbor'] },
+  { id: 'tg-relationship', name: 'Relationship', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
   { id: 'tg-role', name: 'Role', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
   { id: 'tg-circle', name: 'Circle', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
 ];

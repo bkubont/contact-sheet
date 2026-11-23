@@ -43,16 +43,19 @@ create policy "delete own contacts" on public.contacts for delete to authenticat
 revoke all on public.contacts from anon;
 grant select, insert, update, delete on public.contacts to authenticated;
 
--- Lets a signed-in person permanently delete their own account and all their
--- contacts (required for App Store apps that offer sign-up).
-create or replace function public.delete_my_account() returns void
+-- Lets a signed-in person erase everything Contact Sheet saved for them.
+-- The login itself is NOT deleted: this Supabase project is shared with
+-- Canopy Estimate, so removing auth.users would also remove that account.
+drop function if exists public.delete_my_account();
+
+create or replace function public.delete_my_contact_sheet_data() returns void
 language plpgsql security definer set search_path = '' as $$
 begin
   if auth.uid() is null then
     raise exception 'not signed in';
   end if;
-  delete from auth.users where id = auth.uid();   -- contacts go too (on delete cascade)
+  delete from public.contacts where user_id = auth.uid();
 end $$;
 
-revoke all on function public.delete_my_account() from public, anon;
-grant execute on function public.delete_my_account() to authenticated;
+revoke all on function public.delete_my_contact_sheet_data() from public, anon;
+grant execute on function public.delete_my_contact_sheet_data() to authenticated;
