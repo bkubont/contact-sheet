@@ -1,14 +1,21 @@
-import type { Contact, PdfOptions } from '../types';
-import { displayName } from './store';
+import type { Contact, PdfOptions, PdfTheme } from '../types';
+import { PDF_THEMES } from '../types';
+import { displayName, Store } from './store';
 
-const COLORS = {
-  text: [28, 37, 38] as [number, number, number],
-  muted: [107, 119, 120] as [number, number, number],
-  line: [214, 211, 203] as [number, number, number],
-  accent: [15, 76, 81] as [number, number, number],
-  accentSoft: [220, 235, 235] as [number, number, number],
-  fill: [244, 243, 239] as [number, number, number],
-};
+type RGB = [number, number, number];
+
+function themeColors(theme: PdfTheme) {
+  const t = PDF_THEMES[theme] || PDF_THEMES.royal;
+  return {
+    text: [28, 37, 38] as RGB,
+    muted: [100, 116, 139] as RGB,
+    line: [203, 213, 225] as RGB,
+    accent: t.accent as RGB,
+    accentSoft: t.soft as RGB,
+    gold: t.gold as RGB,
+    fill: [248, 250, 252] as RGB,
+  };
+}
 
 function safe(s: string) {
   return String(s || '')
@@ -27,6 +34,10 @@ export function sortContacts(list: Contact[], sort: PdfOptions['sort']) {
   const key = (c: Contact) => {
     if (sort === 'first') return [c.first || c.last || c.company, c.last];
     if (sort === 'company') return [c.company || '~', c.last, c.first];
+    if (sort === 'category') {
+      const cat = Store.categoryName(c.category) || '~';
+      return [cat, c.last, c.first];
+    }
     return [c.last || c.first || c.company, c.first];
   };
   return [...list].sort((a, b) => {
@@ -47,6 +58,10 @@ function nameFor(c: Contact, sort: PdfOptions['sort']) {
 
 function detailLines(c: Contact, o: PdfOptions) {
   const lines: { label: string; text: string; muted?: boolean }[] = [];
+  if (o.f_category && c.category) {
+    const name = Store.categoryName(c.category);
+    if (name) lines.push({ label: 'Category', text: name });
+  }
   if (o.f_phones) for (const p of c.phones) lines.push({ label: cap(p.label), text: p.value });
   if (o.f_emails)
     for (const e of c.emails)
@@ -65,7 +80,10 @@ function subLine(c: Contact, o: PdfOptions) {
 
 export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'pt', format: o.paper || 'letter' });
+  const COLORS = themeColors(o.theme || 'royal');
+  const format = o.paper || 'letter';
+  const orientation = o.orientation || 'portrait';
+  const doc = new jsPDF({ unit: 'pt', format, orientation });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 40;
@@ -73,6 +91,9 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
   const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   const title = safe(o.title || 'Contact Sheet');
   const subtitle = safe(o.subtitle || '');
+  const headerExtra = safe(o.headerText || '');
+  const footerText = safe(o.footerText || 'Personal directory · Not for redistribution');
+  const columns = o.layout === 'cards' ? Math.min(3, Math.max(1, o.columns || 2)) : 2;
 
   const set = (size: number, style: 'normal' | 'bold' | 'italic' = 'normal', color = COLORS.text) => {
     doc.setFont('helvetica', style);
@@ -87,15 +108,30 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     if (firstContentPage) {
       set(18, 'bold', COLORS.accent);
       doc.text(title, M, M + 6);
-      set(9, 'normal', COLORS.muted);
-      doc.text(`${list.length} contact${list.length === 1 ? '' : 's'}  ·  ${dateStr}`, M, M + 22);
+      if (headerExtra) {
+        set(9, 'normal', COLORS.gold);
+        doc.text(headerExtra, M, M + 22);
+        set(9, 'normal', COLORS.muted);
+        doc.text(`${list.length} contact${list.length === 1 ? '' : 's'}  ·  ${dateStr}`, M, M + 36);
+      } else {
+        set(9, 'normal', COLORS.muted);
+        doc.text(`${list.length} contact${list.length === 1 ? '' : 's'}  ·  ${dateStr}`, M, M + 22);
+      }
     } else {
       set(10, 'bold', COLORS.accent);
       doc.text(title, M, M + 6);
+      if (headerExtra) {
+        set(8, 'normal', COLORS.gold);
+        doc.text(headerExtra, W - M, M + 6, { align: 'right' });
+      }
     }
+    const lineY = firstContentPage ? M + (headerExtra ? 44 : 30) : M + 14;
     doc.setDrawColor(...COLORS.accent);
-    doc.setLineWidth(1);
-    doc.line(M, firstContentPage ? M + 30 : M + 14, W - M, firstContentPage ? M + 30 : M + 14);
+    doc.setLineWidth(1.5);
+    doc.line(M, lineY, W - M, lineY);
+    doc.setDrawColor(...COLORS.gold);
+    doc.setLineWidth(0.75);
+    doc.line(M, lineY + 3, W - M, lineY + 3);
   }
 
   function newPage(withHeader = true) {
@@ -112,6 +148,8 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
   if (o.cover) {
     doc.setFillColor(...COLORS.accent);
     doc.rect(0, 0, W, H * 0.38, 'F');
+    doc.setFillColor(...COLORS.gold);
+    doc.rect(0, H * 0.38 - 6, W, 6, 'F');
     set(11, 'normal', [255, 255, 255]);
     doc.text('CONTACT SHEET', M, H * 0.14);
     set(32, 'bold', [255, 255, 255]);
@@ -124,15 +162,19 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       doc.text(subLines, M, cy);
       cy += subLines.length * 18 + 8;
     }
+    if (headerExtra) {
+      set(11, 'normal', COLORS.gold);
+      doc.text(headerExtra, M, cy + 4);
+      cy += 18;
+    }
     set(12, 'normal', [255, 255, 255]);
     doc.text(`${list.length} contact${list.length === 1 ? '' : 's'}`, M, cy + 8);
     doc.text(dateStr, M, cy + 26);
 
-    // Mini index by first letter
     const letters = new Map<string, number>();
     for (const c of list) {
       const nm = nameFor(c, o.sort);
-      const src = o.sort === 'company' ? c.company || nm : nm;
+      const src = o.sort === 'company' ? c.company || nm : o.sort === 'category' ? Store.categoryName(c.category) || nm : nm;
       const letter = (safe(src).trim()[0] || '#').toUpperCase();
       const key = /[A-Z]/.test(letter) ? letter : '#';
       letters.set(key, (letters.get(key) || 0) + 1);
@@ -155,21 +197,22 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       }
     }
     set(9, 'normal', COLORS.muted);
-    doc.text('Personal directory · Not for redistribution', M, H - M);
+    doc.text(footerText || 'Personal directory · Not for redistribution', M, H - M);
     newPage(true);
   } else {
     pageHeader(true);
-    y = M + 42;
+    y = M + (headerExtra ? 56 : 42);
   }
 
-  const top = o.cover ? M + 28 : M + 42;
+  const top = o.cover ? M + 28 : M + (headerExtra ? 56 : 42);
   const bottom = H - M - 10;
 
   // ----- Cards -----
   if (o.layout === 'cards') {
     const gap = 12;
     const pad = 9;
-    const cw = (W - 2 * M - gap) / 2;
+    const cols = columns;
+    const cw = (W - 2 * M - gap * (cols - 1)) / cols;
     const inner = cw - 2 * pad;
     const labelW = 54;
     const maxCardH = bottom - top;
@@ -196,7 +239,6 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       for (const d of detailLines(c, o)) {
         set(8.5, 'normal');
         const l = wrap(d.text, inner - labelW);
-        // Split very long detail fields into page-sized chunks of lines.
         const lineH = 10.5;
         const maxLines = Math.max(1, Math.floor((maxCardH - pad * 2 - 40) / lineH));
         for (let i = 0; i < l.length; i += maxLines) {
@@ -216,29 +258,30 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       doc.setDrawColor(...COLORS.line);
       doc.setFillColor(255, 255, 255);
       doc.setLineWidth(0.75);
-      doc.roundedRect(x, y0, cw, h, 5, 5, 'S');
+      doc.rect(x, y0, cw, h, 'S');
       doc.setFillColor(...COLORS.accent);
-      doc.rect(x, y0 + 6, 2.5, Math.max(0, h - 12), 'F');
-      let yy = y0 + pad + 9;
+      doc.rect(x, y0, 3, h, 'F');
+      doc.setFillColor(...COLORS.gold);
+      doc.rect(x + 3, y0, cw - 3, 2.5, 'F');
+      let yy = y0 + pad + 11;
       blocks.forEach((b, i) => {
         if (b.kind === 'name') {
           set(11, 'bold');
-          doc.text(b.lines, x + pad, yy);
+          doc.text(b.lines, x + pad + 4, yy);
         } else if (b.kind === 'sub') {
           set(8.5, 'italic', COLORS.muted);
-          doc.text(b.lines, x + pad, yy - 1);
+          doc.text(b.lines, x + pad + 4, yy - 1);
         } else {
           if (i > 0 && blocks[i - 1].kind !== 'detail') yy += 3;
           set(7, 'bold', COLORS.muted);
-          doc.text(safe(b.d.label).toUpperCase(), x + pad, yy - 0.5);
+          doc.text(safe(b.d.label).toUpperCase(), x + pad + 4, yy - 0.5);
           set(8.5, 'normal', b.d.muted ? COLORS.muted : COLORS.text);
-          doc.text(b.lines, x + pad + labelW, yy);
+          doc.text(b.lines, x + pad + 4 + labelW, yy);
         }
         yy += b.h;
       });
     };
 
-    /** Pack contacts into card-height chunks that fit one column height. */
     const cardChunks: { blocks: Block[]; h: number }[] = [];
     for (const c of list) {
       const blocks = buildBlocks(c);
@@ -261,20 +304,20 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       if (chunk.length) cardChunks.push({ blocks: chunk, h: measureBlocks(chunk) });
     }
 
-    for (let i = 0; i < cardChunks.length; i += 2) {
-      const a = cardChunks[i];
-      const b = cardChunks[i + 1] || null;
-      const rowH = Math.max(a.h, b ? b.h : 0);
+    for (let i = 0; i < cardChunks.length; i += cols) {
+      const row = cardChunks.slice(i, i + cols);
+      const rowH = Math.max(...row.map((r) => r.h));
       if (y + rowH > bottom && y > top + 20) newPage(true);
-      drawCard(a.blocks, M, y, rowH);
-      if (b) drawCard(b.blocks, M + cw + gap, y, rowH);
+      row.forEach((item, idx) => {
+        drawCard(item.blocks, M + idx * (cw + gap), y, rowH);
+      });
       y += rowH + gap;
     }
   }
 
   // ----- List -----
   if (o.layout === 'list') {
-    const leftW = 165;
+    const leftW = orientation === 'landscape' ? 200 : 165;
     const gap = 14;
     const rightX = M + leftW + gap;
     const rightW = W - M - rightX;
@@ -284,7 +327,12 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
 
     for (const c of list) {
       const nm = nameFor(c, o.sort);
-      const letterSrc = o.sort === 'company' ? c.company || nm : nm;
+      const letterSrc =
+        o.sort === 'company'
+          ? c.company || nm
+          : o.sort === 'category'
+            ? Store.categoryName(c.category) || nm
+            : nm;
       const letter = (safe(letterSrc).trim()[0] || '#').toUpperCase();
 
       set(10.5, 'bold');
@@ -303,6 +351,9 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
       if (headH) {
         set(12, 'bold', COLORS.accent);
         doc.text(/[A-Z]/.test(letter) ? letter : '#', M, y + 12);
+        doc.setDrawColor(...COLORS.gold);
+        doc.setLineWidth(1);
+        doc.line(M + 16, y + 10, M + 40, y + 10);
         y += headH;
         lastLetter = letter;
       }
@@ -355,6 +406,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
   if (o.layout === 'table') {
     type Col = { key: string; title: string; w: number; x?: number; width?: number };
     const cols: Col[] = [{ key: 'name', title: 'Name', w: 1.3 }];
+    if (o.f_category) cols.push({ key: 'category', title: 'Category', w: 0.7 });
     if (o.f_phones) cols.push({ key: 'phone', title: 'Phone', w: 1 });
     if (o.f_emails) cols.push({ key: 'email', title: 'Email', w: 1.3 });
     if (o.f_address) cols.push({ key: 'address', title: 'Address', w: 1.4 });
@@ -377,15 +429,19 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     const headerRow = () => {
       doc.setFillColor(...COLORS.accent);
       doc.rect(M, y, avail, 16, 'F');
+      doc.setFillColor(...COLORS.gold);
+      doc.rect(M, y + 16, avail, 2, 'F');
       set(8, 'bold', [255, 255, 255]);
       for (const col of cols) doc.text(col.title, (col.x || 0) + cp, y + 11);
-      y += 16;
+      y += 18;
     };
 
     const cellText = (c: Contact, key: string) => {
       switch (key) {
         case 'name':
           return { main: nameFor(c, o.sort), sub: subLine(c, o) };
+        case 'category':
+          return { main: Store.categoryName(c.category) };
         case 'phone':
           return {
             main: c.phones
@@ -415,7 +471,6 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
         let main = t.main ? wrap(t.main, (col.width || 0) - 2 * cp) : [];
         set(fs - 1, 'italic');
         const sub = 'sub' in t && t.sub ? wrap(t.sub, (col.width || 0) - 2 * cp) : [];
-        // Cap a single cell so the row can fit on one page; overflow continues as a follow-up row.
         const maxLines = Math.max(1, Math.floor((maxRowContentH - 2 * cp) / lh) - sub.length);
         const overflow = main.slice(maxLines);
         main = main.slice(0, maxLines);
@@ -457,7 +512,6 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
         idx % 2 === 1,
       );
 
-      // Continue overflowing note/address text on subsequent rows under the same name.
       let more = true;
       while (more) {
         more = false;
@@ -484,7 +538,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     if (o.cover && i === 1) continue;
     set(8, 'normal', COLORS.muted);
     doc.text(`Page ${i} of ${pages}`, W - M, H - M + 14, { align: 'right' });
-    doc.text(title, M, H - M + 14);
+    doc.text(footerText || title, M, H - M + 14);
   }
 
   return doc.output('blob');

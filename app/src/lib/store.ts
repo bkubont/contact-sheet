@@ -1,4 +1,5 @@
-import type { Contact, Db, Directory, LabeledValue } from '../types';
+import type { CategoryDef, Contact, Db, Directory, LabeledValue, TagGroup } from '../types';
+import { DEFAULT_CATEGORIES, DEFAULT_TAG_GROUPS } from '../types';
 import { uid } from './util';
 
 const DB_KEY = 'contactSheet.db.v2';
@@ -6,13 +7,19 @@ const LEGACY_CONTACTS = 'contactSheet.contacts.v1';
 const META_KEY = 'contactSheet.sync.v1';
 const SEL_KEY = 'contactSheet.selected.v1';
 
-/** Reserved sync row id for directories (lives in the contacts table as JSON). */
+/** Reserved sync row id for directories + taxonomy (lives in the contacts table as JSON). */
 export const DIRS_SYNC_ID = '__cs_directories__';
 
 type SyncMeta = {
   owner: string | null;
   pending: Record<string, number>;
   cursor: string | null;
+};
+
+export type TaxonomyPayload = {
+  directories: Directory[];
+  categories: CategoryDef[];
+  tagGroups: TagGroup[];
 };
 
 function clean(s: unknown): string {
@@ -43,6 +50,7 @@ export function normalizeContact(c: Partial<Contact> & { id?: string }): Contact
     birthday: clean(c.birthday),
     notes: clean(c.notes),
     tags,
+    category: clean(c.category),
     created: c.created || Date.now(),
     updated: Date.now(),
   };
@@ -61,7 +69,64 @@ function dupeKey(c: Contact): string {
 }
 
 function emptyDb(): Db {
-  return { version: 2, contacts: [], directories: [] };
+  return {
+    version: 3,
+    contacts: [],
+    directories: [],
+    categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+    tagGroups: DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] })),
+  };
+}
+
+function normalizeCategory(c: Partial<CategoryDef> & { id?: string; name?: string }): CategoryDef {
+  return {
+    id: c.id || uid(),
+    name: clean(c.name) || 'Untitled',
+    color: clean(c.color) || '#1E3A8A',
+  };
+}
+
+function normalizeTagGroup(g: Partial<TagGroup> & { id?: string; name?: string }): TagGroup {
+  return {
+    id: g.id || uid(),
+    name: clean(g.name) || 'Untitled',
+    tags: [...new Set((g.tags || []).map(clean).filter(Boolean))],
+  };
+}
+
+function resolveCategories(raw: Record<string, unknown>): CategoryDef[] {
+  // Absent key (v2 / incomplete) → seed defaults. Explicit [] must stay empty.
+  if (!('categories' in raw) || raw.categories == null) {
+    return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  }
+  if (!Array.isArray(raw.categories)) return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  return (raw.categories as CategoryDef[]).map(normalizeCategory);
+}
+
+function resolveTagGroups(raw: Record<string, unknown>): TagGroup[] {
+  if (!('tagGroups' in raw) || raw.tagGroups == null) {
+    return DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+  }
+  if (!Array.isArray(raw.tagGroups)) {
+    return DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+  }
+  return (raw.tagGroups as TagGroup[]).map(normalizeTagGroup);
+}
+
+function migrateToV3(raw: Record<string, unknown>): Db {
+  const contacts = Array.isArray(raw.contacts)
+    ? (raw.contacts as Contact[])
+        .filter((c) => c && c.id !== DIRS_SYNC_ID)
+        .map((c) => normalizeContact({ ...c, updated: c.updated || Date.now() }))
+    : [];
+  const directories = Array.isArray(raw.directories) ? (raw.directories as Directory[]) : [];
+  return {
+    version: 3,
+    contacts,
+    directories,
+    categories: resolveCategories(raw),
+    tagGroups: resolveTagGroups(raw),
+  };
 }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -80,18 +145,15 @@ function migrateLegacy(): Contact[] {
 }
 
 function loadDb(): Db {
-  const parsed = readJSON<Db | null>(DB_KEY, null);
-  if (parsed?.version === 2 && Array.isArray(parsed.contacts)) {
-    return {
-      version: 2,
-      contacts: parsed.contacts
-        .filter((c) => c && c.id !== DIRS_SYNC_ID)
-        .map((c) => normalizeContact({ ...c, updated: c.updated || Date.now() })),
-      directories: Array.isArray(parsed.directories) ? parsed.directories : [],
-    };
+  const parsed = readJSON<Record<string, unknown> | null>(DB_KEY, null);
+  if (parsed && (parsed.version === 2 || parsed.version === 3) && Array.isArray(parsed.contacts)) {
+    const db = migrateToV3(parsed);
+    if (parsed.version !== 3) persistDb(db);
+    return db;
   }
   const contacts = migrateLegacy().filter((c) => c.id !== DIRS_SYNC_ID);
-  const db: Db = { version: 2, contacts, directories: [] };
+  const db = emptyDb();
+  db.contacts = contacts;
   if (contacts.length) persistDb(db);
   return db;
 }
@@ -146,6 +208,14 @@ function commit(next: Db, changedIds: string[], directoriesChanged = false) {
   emit();
 }
 
+function taxonomyPayload(): TaxonomyPayload {
+  return {
+    directories: db.directories,
+    categories: db.categories,
+    tagGroups: db.tagGroups,
+  };
+}
+
 if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
   navigator.storage.persist().catch(() => {});
 }
@@ -167,7 +237,13 @@ export function saveSelection(ids: Set<string>) {
   }
 }
 
-export type PendingChange = { id: string; stamp: number; contact: Contact | null; directories?: Directory[] | null };
+export type PendingChange = {
+  id: string;
+  stamp: number;
+  contact: Contact | null;
+  directories?: Directory[] | null;
+  taxonomy?: TaxonomyPayload | null;
+};
 
 export const Store = {
   subscribe(fn: Listener) {
@@ -188,6 +264,18 @@ export const Store = {
   },
   getDirectory(id: string): Directory | undefined {
     return db.directories.find((d) => d.id === id);
+  },
+  categories(): CategoryDef[] {
+    return db.categories;
+  },
+  tagGroups(): TagGroup[] {
+    return db.tagGroups;
+  },
+  categoryName(id: string): string {
+    return db.categories.find((c) => c.id === id)?.name || '';
+  },
+  categoryColor(id: string): string {
+    return db.categories.find((c) => c.id === id)?.color || '#1E3A8A';
   },
   upsert(c: Partial<Contact> & { id?: string }): Contact {
     const n = normalizeContact(c);
@@ -282,6 +370,13 @@ export const Store = {
     for (const c of db.contacts) for (const t of c.tags) m.set(t, (m.get(t) || 0) + 1);
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
   },
+  categoryCounts(): [string, number][] {
+    const m = new Map<string, number>();
+    for (const c of db.contacts) {
+      if (c.category) m.set(c.category, (m.get(c.category) || 0) + 1);
+    }
+    return db.categories.map((cat) => [cat.id, m.get(cat.id) || 0] as [string, number]);
+  },
   renameTag(from: string, to: string) {
     to = to.trim();
     if (!to) return;
@@ -303,6 +398,10 @@ export const Store = {
           tags: d.tags.map((t) => (t === from ? to : t)),
           updated: d.tags.includes(from) ? Date.now() : d.updated,
         })),
+        tagGroups: db.tagGroups.map((g) => ({
+          ...g,
+          tags: g.tags.map((t) => (t === from ? to : t)),
+        })),
       },
       ids,
       true,
@@ -322,6 +421,10 @@ export const Store = {
           ...d,
           tags: d.tags.filter((t) => t !== tag),
           updated: d.tags.includes(tag) ? Date.now() : d.updated,
+        })),
+        tagGroups: db.tagGroups.map((g) => ({
+          ...g,
+          tags: g.tags.filter((t) => t !== tag),
         })),
       },
       ids,
@@ -351,6 +454,55 @@ export const Store = {
       changed,
     );
   },
+  bulkCategory(ids: string[], categoryId: string) {
+    const set = new Set(ids);
+    const changed: string[] = [];
+    commit(
+      {
+        ...db,
+        contacts: db.contacts.map((c) => {
+          if (!set.has(c.id) || c.category === categoryId) return c;
+          changed.push(c.id);
+          return { ...c, category: categoryId, updated: Date.now() };
+        }),
+      },
+      changed,
+    );
+  },
+  upsertCategory(cat: CategoryDef): CategoryDef {
+    const next = normalizeCategory(cat);
+    const categories = [...db.categories];
+    const i = categories.findIndex((c) => c.id === next.id);
+    if (i >= 0) categories[i] = next;
+    else categories.push(next);
+    commit({ ...db, categories }, [], true);
+    return next;
+  },
+  removeCategory(id: string) {
+    commit(
+      {
+        ...db,
+        categories: db.categories.filter((c) => c.id !== id),
+        contacts: db.contacts.map((c) =>
+          c.category === id ? { ...c, category: '', updated: Date.now() } : c,
+        ),
+      },
+      db.contacts.filter((c) => c.category === id).map((c) => c.id),
+      true,
+    );
+  },
+  upsertTagGroup(group: TagGroup): TagGroup {
+    const next = normalizeTagGroup(group);
+    const tagGroups = [...db.tagGroups];
+    const i = tagGroups.findIndex((g) => g.id === next.id);
+    if (i >= 0) tagGroups[i] = next;
+    else tagGroups.push(next);
+    commit({ ...db, tagGroups }, [], true);
+    return next;
+  },
+  removeTagGroup(id: string) {
+    commit({ ...db, tagGroups: db.tagGroups.filter((g) => g.id !== id) }, [], true);
+  },
   upsertDirectory(d: Directory): Directory {
     const directories = [...db.directories];
     const i = directories.findIndex((x) => x.id === d.id);
@@ -379,19 +531,22 @@ export const Store = {
     return JSON.stringify(db, null, 2);
   },
   importBackup(json: string) {
-    const parsed = JSON.parse(json) as Db | Contact[];
+    const parsed = JSON.parse(json) as Db | Contact[] | Record<string, unknown>;
     if (Array.isArray(parsed)) {
       const before = db.contacts.map((c) => c.id);
       const contacts = parsed.map((c) => normalizeContact(c));
-      commit({ version: 2, contacts, directories: db.directories }, [...new Set([...before, ...contacts.map((c) => c.id)])], true);
+      commit(
+        { ...db, version: 3, contacts },
+        [...new Set([...before, ...contacts.map((c) => c.id)])],
+        true,
+      );
       return { contacts: contacts.length, directories: db.directories.length };
     }
-    if (parsed?.version === 2) {
+    if (parsed && (parsed.version === 2 || parsed.version === 3)) {
       const before = db.contacts.map((c) => c.id);
-      const contacts = (parsed.contacts || []).map((c) => normalizeContact(c));
-      const directories = parsed.directories || [];
-      commit({ version: 2, contacts, directories }, [...new Set([...before, ...contacts.map((c) => c.id)])], true);
-      return { contacts: contacts.length, directories: directories.length };
+      const next = migrateToV3(parsed as Record<string, unknown>);
+      commit(next, [...new Set([...before, ...next.contacts.map((c) => c.id)])], true);
+      return { contacts: next.contacts.length, directories: next.directories.length };
     }
     throw new Error('Unrecognized backup format');
   },
@@ -410,7 +565,8 @@ export const Store = {
   pendingChanges(): PendingChange[] {
     return Object.entries(meta.pending).map(([id, stamp]) => {
       if (id === DIRS_SYNC_ID) {
-        return { id, stamp, contact: null, directories: db.directories };
+        const tax = taxonomyPayload();
+        return { id, stamp, contact: null, directories: tax.directories, taxonomy: tax };
       }
       return { id, stamp, contact: this.get(id) || null };
     });
@@ -434,20 +590,40 @@ export const Store = {
     let changed = 0;
     let contacts = [...db.contacts];
     let directories = db.directories;
+    let categories = db.categories;
+    let tagGroups = db.tagGroups;
 
     for (const r of rows) {
       if (meta.pending[r.id]) continue;
       if (r.id === DIRS_SYNC_ID) {
         if (r.deleted) {
-          if (directories.length) {
+          if (directories.length || categories.length || tagGroups.length) {
             directories = [];
+            categories = [];
+            tagGroups = [];
             changed++;
           }
-        } else if (Array.isArray(r.data?.directories)) {
-          const incoming = r.data.directories as Directory[];
-          if (JSON.stringify(incoming) !== JSON.stringify(directories)) {
-            directories = incoming;
-            changed++;
+        } else {
+          if (Array.isArray(r.data?.directories)) {
+            const incoming = r.data.directories as Directory[];
+            if (JSON.stringify(incoming) !== JSON.stringify(directories)) {
+              directories = incoming;
+              changed++;
+            }
+          }
+          if (Array.isArray(r.data?.categories)) {
+            const incoming = (r.data.categories as CategoryDef[]).map(normalizeCategory);
+            if (JSON.stringify(incoming) !== JSON.stringify(categories)) {
+              categories = incoming;
+              changed++;
+            }
+          }
+          if (Array.isArray(r.data?.tagGroups)) {
+            const incoming = (r.data.tagGroups as TagGroup[]).map(normalizeTagGroup);
+            if (JSON.stringify(incoming) !== JSON.stringify(tagGroups)) {
+              tagGroups = incoming;
+              changed++;
+            }
           }
         }
         continue;
@@ -480,7 +656,7 @@ export const Store = {
 
     if (cursor) meta.cursor = cursor;
     if (changed) {
-      db = { version: 2, contacts, directories };
+      db = { version: 3, contacts, directories, categories, tagGroups };
       persistDb(db);
       persistMeta();
       emit();
@@ -506,13 +682,45 @@ export const Store = {
   },
   /** Merge local directories into current set by id (prefer newer `updated`). Queues dirs for upload. */
   mergeDirectories(local: Directory[]) {
-    const byId = new Map(db.directories.map((d) => [d.id, d]));
-    for (const d of local) {
-      const existing = byId.get(d.id);
-      if (!existing || (d.updated || 0) >= (existing.updated || 0)) byId.set(d.id, d);
+    this.mergeTaxonomy({ directories: local, categories: [], tagGroups: [] });
+  },
+  /** Merge local directories + categories + tag groups after adopting an account. Queues taxonomy upload. */
+  mergeTaxonomy(local: TaxonomyPayload) {
+    const dirById = new Map(db.directories.map((d) => [d.id, d]));
+    for (const d of local.directories) {
+      const existing = dirById.get(d.id);
+      if (!existing || (d.updated || 0) >= (existing.updated || 0)) dirById.set(d.id, d);
     }
-    // Also keep unique names from local that don't clash with cloud ids
-    db = { ...db, directories: [...byId.values()] };
+
+    const catById = new Map(db.categories.map((c) => [c.id, c]));
+    for (const c of local.categories) {
+      // Local definitions win on id collision so device customizations survive the pull.
+      catById.set(c.id, normalizeCategory(c));
+    }
+
+    const groupById = new Map(db.tagGroups.map((g) => [g.id, g]));
+    for (const g of local.tagGroups) {
+      const existing = groupById.get(g.id);
+      if (!existing) {
+        groupById.set(g.id, normalizeTagGroup(g));
+      } else {
+        groupById.set(
+          g.id,
+          normalizeTagGroup({
+            id: g.id,
+            name: g.name || existing.name,
+            tags: [...new Set([...existing.tags, ...g.tags])],
+          }),
+        );
+      }
+    }
+
+    db = {
+      ...db,
+      directories: [...dirById.values()],
+      categories: [...catById.values()],
+      tagGroups: [...groupById.values()],
+    };
     meta.pending[DIRS_SYNC_ID] = Date.now();
     persistDb(db);
     persistMeta();

@@ -9,12 +9,13 @@ import { downloadBlob, toast } from '../lib/util';
 import { toVCard } from '../lib/importers';
 
 const UNTAGGED = '__untagged__';
+const UNCAT = '__uncategorized__';
 
 function sortKey(c: Contact) {
   return `${c.last || c.first || c.company} ${c.first}`.toLowerCase();
 }
 
-function matches(c: Contact, q: string) {
+function matches(c: Contact, q: string, categoryName: (id: string) => string) {
   if (!q) return true;
   const hay = [
     c.first,
@@ -24,6 +25,7 @@ function matches(c: Contact, q: string) {
     c.address,
     c.notes,
     c.birthday,
+    categoryName(c.category),
     ...c.tags,
     ...c.phones.map((p) => p.value),
     ...c.emails.map((e) => e.value),
@@ -46,6 +48,7 @@ export function ContactsScreen({
   const db = useDb();
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => loadSelection());
   const [editing, setEditing] = useState<Contact | null | undefined>(undefined); // undefined=closed, null=new
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -53,13 +56,17 @@ export function ContactsScreen({
   const [pdfFromSelection, setPdfFromSelection] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkTag, setBulkTag] = useState('');
+  const [bulkCatOpen, setBulkCatOpen] = useState(false);
+  const [bulkCat, setBulkCat] = useState('');
   const [saveDirOpen, setSaveDirOpen] = useState(false);
   const [dirName, setDirName] = useState('');
   const [targetDirId, setTargetDirId] = useState<string>('');
   const [sameNameMode, setSameNameMode] = useState<'merge' | 'replace'>('merge');
 
   const counts = useMemo(() => Store.tagCounts(), [db]);
+  const catCounts = useMemo(() => Store.categoryCounts(), [db]);
   const untaggedCount = useMemo(() => db.contacts.filter((c) => !c.tags.length).length, [db]);
+  const uncatCount = useMemo(() => db.contacts.filter((c) => !c.category).length, [db]);
   const manualDirectories = useMemo(
     () => db.directories.filter((d) => d.mode === 'manual').sort((a, b) => a.name.localeCompare(b.name)),
     [db],
@@ -84,13 +91,18 @@ export function ContactsScreen({
   const visible = useMemo(() => {
     return db.contacts
       .filter((c) => {
+        if (categoryFilter === UNCAT) {
+          if (c.category) return false;
+        } else if (categoryFilter && c.category !== categoryFilter) {
+          return false;
+        }
         if (tag === null) return true;
         if (tag === UNTAGGED) return !c.tags.length;
         return c.tags.includes(tag);
       })
-      .filter((c) => matches(c, query))
+      .filter((c) => matches(c, query, Store.categoryName))
       .sort((a, b) => sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base' }));
-  }, [db, tag, query]);
+  }, [db, tag, categoryFilter, query]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Contact[]>();
@@ -143,6 +155,12 @@ export function ContactsScreen({
     toast(add ? `Tagged ${selectedContacts.length}` : `Removed tag from ${selectedContacts.length}`);
     setBulkTagOpen(false);
     setBulkTag('');
+  }
+
+  function applyBulkCategory() {
+    Store.bulkCategory([...selected], bulkCat);
+    toast(bulkCat ? `Set category on ${selectedContacts.length}` : `Cleared category on ${selectedContacts.length}`);
+    setBulkCatOpen(false);
   }
 
   function saveAsDirectory() {
@@ -223,6 +241,12 @@ export function ContactsScreen({
   }
 
   const presetTag = tag && tag !== UNTAGGED ? tag : null;
+  const presetCategory =
+    categoryFilter && categoryFilter !== UNCAT ? categoryFilter : null;
+
+  const pdfTitle =
+    (categoryFilter && categoryFilter !== UNCAT && Store.categoryName(categoryFilter)) ||
+    (tag && tag !== UNTAGGED ? tag : 'Contact Sheet');
 
   return (
     <>
@@ -251,37 +275,76 @@ export function ContactsScreen({
           </svg>
           <input
             type="search"
-            placeholder="Search name, company, phone, tag…"
+            placeholder="Search name, company, phone, tag, category…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             autoComplete="off"
           />
         </div>
         {db.contacts.length > 0 && (
-          <div className="chips">
-            <button className={`chip${tag === null ? ' on' : ''}`} onClick={() => setTag(null)}>
-              All
-            </button>
-            {counts.map(([t, n]) => (
-              <button
-                key={t}
-                className={`chip${tag === t ? ' on' : ''}`}
-                onClick={() => setTag(tag === t ? null : t)}
-              >
-                {t}
-                <span className="n">{n}</span>
-              </button>
-            ))}
-            {!!counts.length && !!untaggedCount && (
-              <button
-                className={`chip${tag === UNTAGGED ? ' on' : ''}`}
-                onClick={() => setTag(tag === UNTAGGED ? null : UNTAGGED)}
-              >
-                Untagged
-                <span className="n">{untaggedCount}</span>
-              </button>
-            )}
-          </div>
+          <>
+            <div className="filter-row">
+              <div className="filter-label">Categories</div>
+              <div className="chips">
+                <button
+                  className={`chip${categoryFilter === null ? ' on' : ''}`}
+                  onClick={() => setCategoryFilter(null)}
+                >
+                  All
+                </button>
+                {db.categories.map((cat) => {
+                  const n = catCounts.find(([id]) => id === cat.id)?.[1] || 0;
+                  return (
+                    <button
+                      key={cat.id}
+                      className={`chip cat${categoryFilter === cat.id ? ' on' : ''}`}
+                      style={{ ['--cat-color' as string]: cat.color }}
+                      onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
+                    >
+                      {cat.name}
+                      <span className="n">{n}</span>
+                    </button>
+                  );
+                })}
+                {!!uncatCount && (
+                  <button
+                    className={`chip${categoryFilter === UNCAT ? ' on' : ''}`}
+                    onClick={() => setCategoryFilter(categoryFilter === UNCAT ? null : UNCAT)}
+                  >
+                    Uncategorized
+                    <span className="n">{uncatCount}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="filter-row">
+              <div className="filter-label">Tags</div>
+              <div className="chips">
+                <button className={`chip${tag === null ? ' on' : ''}`} onClick={() => setTag(null)}>
+                  All
+                </button>
+                {counts.map(([t, n]) => (
+                  <button
+                    key={t}
+                    className={`chip${tag === t ? ' on' : ''}`}
+                    onClick={() => setTag(tag === t ? null : t)}
+                  >
+                    {t}
+                    <span className="n">{n}</span>
+                  </button>
+                ))}
+                {!!counts.length && !!untaggedCount && (
+                  <button
+                    className={`chip${tag === UNTAGGED ? ' on' : ''}`}
+                    onClick={() => setTag(tag === UNTAGGED ? null : UNTAGGED)}
+                  >
+                    Untagged
+                    <span className="n">{untaggedCount}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
         )}
       </header>
 
@@ -305,15 +368,28 @@ export function ContactsScreen({
           <p>Try another search or tag filter.</p>
         </div>
       ) : (
-        <main className="list">
+        <main className="list tablet-grid">
           {grouped.map(([letter, people]) => (
             <section key={letter}>
               <div className="letter">{letter}</div>
               {people.map((c, i) => {
                 const sel = selected.has(c.id);
-                const meta = [c.title, c.company].filter(Boolean).join(' · ') || c.phones[0]?.value || c.emails[0]?.value || '';
+                const catName = c.category ? Store.categoryName(c.category) : '';
+                const catColor = c.category ? Store.categoryColor(c.category) : undefined;
+                const meta =
+                  [catName, c.title, c.company].filter(Boolean).join(' · ') ||
+                  c.phones[0]?.value ||
+                  c.emails[0]?.value ||
+                  '';
                 return (
-                  <div key={c.id} className={`row${sel ? ' sel' : ''}`} style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}>
+                  <div
+                    key={c.id}
+                    className={`row${sel ? ' sel' : ''}`}
+                    style={{
+                      animationDelay: `${Math.min(i, 12) * 20}ms`,
+                      ['--row-accent' as string]: catColor || 'var(--accent)',
+                    }}
+                  >
                     <button
                       type="button"
                       className="pick"
@@ -330,8 +406,13 @@ export function ContactsScreen({
                     <button type="button" className="row-main" style={{ border: 0, background: 'transparent', textAlign: 'left', padding: 0 }} onClick={() => setEditing(c)}>
                       <div className="row-name">{displayName(c)}</div>
                       {meta && <div className="row-meta">{meta}</div>}
-                      {!!c.tags.length && (
+                      {(!!c.tags.length || catName) && (
                         <div className="pills">
+                          {catName && (
+                            <span className="pill gold" style={{ background: `${catColor}22`, color: catColor }}>
+                              {catName}
+                            </span>
+                          )}
                           {c.tags.map((t) => (
                             <span key={t} className="pill">
                               {t}
@@ -367,6 +448,9 @@ export function ContactsScreen({
           <div className="selbar-actions">
             <button type="button" className="btn" onClick={() => setBulkTagOpen(true)}>
               Tag…
+            </button>
+            <button type="button" className="btn" onClick={() => { setBulkCat(selectedContacts[0]?.category || ''); setBulkCatOpen(true); }}>
+              Category…
             </button>
             <button type="button" className="btn" onClick={exportSelected}>
               Export
@@ -431,17 +515,39 @@ export function ContactsScreen({
         open={editing !== undefined}
         contact={editing ?? null}
         presetTag={presetTag}
+        presetCategory={presetCategory}
         onClose={() => setEditing(undefined)}
       />
       <PdfSheet
         open={pdfOpen}
         contacts={pdfContacts}
-        defaultTitle={tag && tag !== UNTAGGED ? tag : 'Contact Sheet'}
+        defaultTitle={pdfTitle}
         onClose={() => {
           setPdfOpen(false);
           setPdfFromSelection(false);
         }}
       />
+
+      <Sheet open={bulkCatOpen} title="Set category" onClose={() => setBulkCatOpen(false)}>
+        <p className="muted">
+          Assign a primary category to {selectedContacts.length} selected contact
+          {selectedContacts.length === 1 ? '' : 's'}.
+        </p>
+        <label>
+          Category
+          <select value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
+            <option value="">— None —</option>
+            {db.categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="btn primary wide" onClick={applyBulkCategory}>
+          Apply category
+        </button>
+      </Sheet>
 
       <Sheet open={bulkTagOpen} title="Tag selected" onClose={() => setBulkTagOpen(false)}>
         <p className="muted">
