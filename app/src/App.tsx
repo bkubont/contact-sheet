@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ContactsScreen } from './screens/ContactsScreen';
 import { DirectoriesScreen } from './screens/DirectoriesScreen';
 import { MenuSheet } from './components/MenuSheet';
+import { InstallBanner } from './components/InstallBanner';
 import { Sync, type SyncStatus } from './lib/sync';
 
 type Tab = 'contacts' | 'directories';
@@ -28,6 +29,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <InstallBanner />
       {tab === 'contacts' ? (
         <ContactsScreen
           onOpenMenu={() => setMenuOpen(true)}

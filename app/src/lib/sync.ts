@@ -44,12 +44,18 @@ async function push() {
   const changes = Store.pendingChanges();
   for (let i = 0; i < changes.length; i += 500) {
     const chunk = changes.slice(i, i + 500);
-    const rows = chunk.map(({ id, contact, directories }) => {
+    const rows = chunk.map(({ id, contact, directories, taxonomy }) => {
       if (id === DIRS_SYNC_ID) {
         return {
           user_id: session!.user.id,
           id,
-          data: { directories: directories || [] },
+          data: taxonomy
+            ? {
+                directories: taxonomy.directories,
+                categories: taxonomy.categories,
+                tagGroups: taxonomy.tagGroups,
+              }
+            : { directories: directories || [] },
           deleted: false,
         };
       }
