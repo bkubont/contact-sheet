@@ -1,21 +1,30 @@
 import { useEffect, useState } from 'react';
-import type { Contact, PdfOptions } from '../types';
-import { DEFAULT_PDF } from '../types';
+import type { Contact, PdfOptions, PdfTheme } from '../types';
+import { DEFAULT_PDF, PDF_THEMES } from '../types';
 import { makePdf, shareOrDownloadPdf } from '../lib/pdf';
 import { toast } from '../lib/util';
 import { Sheet } from './Sheet';
 
-const PDF_KEY = 'contactSheet.pdfOptions.v1';
+const PDF_KEY = 'contactSheet.pdfOptions.v2';
 
 function loadOpts(): PdfOptions {
   try {
     const raw = localStorage.getItem(PDF_KEY);
     if (raw) return { ...DEFAULT_PDF, ...JSON.parse(raw) };
+    const legacy = localStorage.getItem('contactSheet.pdfOptions.v1');
+    if (legacy) return { ...DEFAULT_PDF, ...JSON.parse(legacy) };
   } catch {
     /* ignore */
   }
   return { ...DEFAULT_PDF };
 }
+
+const THEME_BG: Record<PdfTheme, string> = {
+  royal: 'linear-gradient(135deg,#1e3a8a,#1d4ed8)',
+  gold: 'linear-gradient(135deg,#b45309,#f59e0b)',
+  navy: 'linear-gradient(135deg,#0f172a,#334155)',
+  charcoal: 'linear-gradient(135deg,#334155,#64748b)',
+};
 
 export function PdfSheet({
   open,
@@ -124,6 +133,39 @@ export function PdfSheet({
           onChange={(e) => set('subtitle', e.target.value)}
         />
       </label>
+      <label>
+        Header line (optional)
+        <input
+          value={opts.headerText}
+          placeholder="e.g. Brittany’s directory"
+          onChange={(e) => set('headerText', e.target.value)}
+        />
+      </label>
+      <label>
+        Footer text
+        <input
+          value={opts.footerText}
+          placeholder="Personal directory"
+          onChange={(e) => set('footerText', e.target.value)}
+        />
+      </label>
+
+      <fieldset>
+        <legend>Color theme</legend>
+        <div className="grid2">
+          {(Object.keys(PDF_THEMES) as PdfTheme[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={`swatch${opts.theme === key ? ' on' : ''}`}
+              style={{ background: THEME_BG[key] }}
+              onClick={() => set('theme', key)}
+            >
+              {PDF_THEMES[key].label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset>
         <legend>Layout</legend>
@@ -136,6 +178,24 @@ export function PdfSheet({
         </div>
       </fieldset>
 
+      {opts.layout === 'cards' && (
+        <fieldset>
+          <legend>Card columns</legend>
+          <div className="seg">
+            {([1, 2, 3] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={opts.columns === n ? 'on' : ''}
+                onClick={() => set('columns', n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <label className="check">
         <input type="checkbox" checked={opts.cover} onChange={(e) => set('cover', e.target.checked)} />
         Cover page with title & letter index
@@ -146,6 +206,7 @@ export function PdfSheet({
         {(
           [
             ['f_company', 'Company / title'],
+            ['f_category', 'Category'],
             ['f_phones', 'Phones'],
             ['f_emails', 'Emails'],
             ['f_address', 'Address'],
@@ -168,6 +229,7 @@ export function PdfSheet({
             <option value="last">Last name</option>
             <option value="first">First name</option>
             <option value="company">Company</option>
+            <option value="category">Category</option>
           </select>
         </label>
         <label>
@@ -179,8 +241,31 @@ export function PdfSheet({
         </label>
       </div>
 
+      <fieldset>
+        <legend>Orientation</legend>
+        <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <button
+            type="button"
+            className={opts.orientation === 'portrait' ? 'on' : ''}
+            onClick={() => set('orientation', 'portrait')}
+          >
+            Portrait
+          </button>
+          <button
+            type="button"
+            className={opts.orientation === 'landscape' ? 'on' : ''}
+            onClick={() => set('orientation', 'landscape')}
+          >
+            Landscape
+          </button>
+        </div>
+      </fieldset>
+
       <button type="button" className="btn wide" disabled={busy || !contacts.length} onClick={preview}>
         Preview in new tab
+      </button>
+      <button type="button" className="btn primary wide" disabled={busy || !contacts.length} onClick={generate}>
+        {busy ? 'Creating…' : 'Create PDF'}
       </button>
     </Sheet>
   );

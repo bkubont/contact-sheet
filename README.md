@@ -1,12 +1,12 @@
 # Contact Sheet
 
-A personal contact directory you can add to your phone’s Home Screen. Keep a master
-list of contacts, tag them for filtering, save named directories, and make a printable PDF
-of whoever you pick.
+A personal contact directory you can add to your tablet or phone’s Home Screen. Keep a
+master list of contacts, organize them with categories and tag groups, save named
+directories, and make a printable PDF of whoever you pick.
 
-## Active app (React)
+## App
 
-The product lives in [`app/`](app/):
+Everything lives in [`app/`](app/) (React + Vite):
 
 ```bash
 cd app
@@ -16,28 +16,28 @@ npm run build    # static files → app/dist/
 ```
 
 ### Features
-- **Master list** — add / edit / delete contacts; search; bulk delete / export
-- **Tags** — per contact, bulk tag, filter chips (including Untagged), rename / delete
-- **Directories** — editable smart lists (by tags) or saved selections (merge/replace)
-- **Make PDF** — cover page, in-tab preview, Cards / List / Table; share or download
-- **Import** with preview; **export** `.vcf`; JSON backup / restore with confirmation
-- **Optional sync** — Supabase (set `VITE_SUPABASE_*` when building `app/`)
-- **Offline PWA** via service worker
-- Migrates data from the older vanilla app’s `localStorage` keys automatically
+- **Master list** — add / edit / delete; search; bulk category / tag / delete / export
+- **Categories** — one primary category per contact (folder-like)
+- **Tag groups** — organized tags (e.g. Relationship, Role, Circle) plus free tags
+- **Directories** — editable smart lists (by tags) or saved selections
+- **Make PDF** — Royal/Gold themes, portrait/landscape, columns, cover, preview
+- **Import** with preview; **export** `.vcf`; JSON backup / restore
+- **Optional sync** — Supabase (`VITE_SUPABASE_*` when building `app/`)
+- **Offline PWA** — Add to Home Screen (iPad Edge/Safari guided install)
 
 ### Typical use
-1. Import contacts → tag them (e.g. *Family*)
-2. Filter by tag → **PDF these**, or select → **Save list** / **Make PDF**
-3. Or open **Directories** → create a smart list from tags → **Make PDF**
+1. Import contacts → assign a category and tags
+2. Filter → **PDF these**, or select → **Save list** / **Make PDF**
+3. Or open **Directories** → smart list from tags → **Make PDF**
 
-## Putting it on the web
-Deploy the contents of `app/dist/` to any static host (GitHub Pages, Netlify, Cloudflare Pages, Hostinger). On iPhone: open the URL in Safari → Share → **Add to Home Screen**.
+## Deploy
+Deploy the contents of `app/dist/` to any static host. Hostinger target is in
+[`.hostinger/site.json`](.hostinger/site.json).
 
-## Legacy vanilla app
-The root `index.html` + `js/` PWA is the previous Contact Sheet. It still works offline for existing installs. New development happens in `app/`. Cloud sync (Supabase) from the vanilla app is documented under [`supabase/`](supabase/) and can be re-wired into the React app later.
+On iPad (Edge or Safari): open the URL → **Add to Home Screen** (banner or Menu).
+
+## Sync schema
+[`supabase/schema.sql`](supabase/schema.sql) — run once in a Supabase project for optional cloud sync.
 
 ## App Store path
-See [`docs/APP_STORE.md`](docs/APP_STORE.md) for Capacitor wrapping and review notes.
-
-## Privacy
-[`privacy.html`](privacy.html) — draft; fill in the bracketed parts before shipping.
+See [`docs/APP_STORE.md`](docs/APP_STORE.md). Privacy draft: [`privacy.html`](privacy.html).

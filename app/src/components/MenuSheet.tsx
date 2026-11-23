@@ -7,6 +7,7 @@ import { useDb } from '../hooks/useStore';
 import type { Contact } from '../types';
 import { Sheet } from './Sheet';
 import { AccountSheet } from './AccountSheet';
+import { GroupsSheet } from './GroupsSheet';
 
 export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const db = useDb();
@@ -17,6 +18,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [pendingFile, setPendingFile] = useState<{ text: string; name: string; parsed: ReturnType<typeof parseContacts> } | null>(null);
   const [preview, setPreview] = useState<{ total: number; wouldAdd: number; wouldSkip: number; samples: Contact[] } | null>(null);
   const [tagsOpen, setTagsOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreText, setRestoreText] = useState('');
@@ -79,7 +81,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
       if (Array.isArray(parsed)) {
         contacts = parsed.length;
         directories = db.directories.length;
-      } else if (parsed?.version === 2) {
+      } else if (parsed?.version === 2 || parsed?.version === 3) {
         contacts = parsed.contacts?.length || 0;
         directories = parsed.directories?.length || 0;
       } else {
@@ -124,7 +126,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
   }
 
   const counts = Store.tagCounts();
-  const mainOpen = open && !importOpen && !tagsOpen && !accountOpen && !restoreOpen;
+  const mainOpen = open && !importOpen && !tagsOpen && !groupsOpen && !accountOpen && !restoreOpen;
 
   return (
     <>
@@ -133,8 +135,20 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
           <button type="button" onClick={startImport}>
             Import .vcf / .csv
           </button>
+          <button type="button" onClick={() => setGroupsOpen(true)}>
+            Categories & tag groups
+          </button>
           <button type="button" onClick={() => setTagsOpen(true)}>
             Manage tags
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              window.dispatchEvent(new Event('cs:show-install'));
+            }}
+          >
+            Add to Home Screen
           </button>
           <button type="button" onClick={exportVcf} disabled={!db.contacts.length}>
             Export all as .vcf
@@ -286,6 +300,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
         )}
       </Sheet>
 
+      <GroupsSheet open={groupsOpen} onClose={() => setGroupsOpen(false)} />
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
     </>
   );

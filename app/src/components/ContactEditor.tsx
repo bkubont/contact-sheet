@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Contact, LabeledValue } from '../types';
 import { Store } from '../lib/store';
+import { useDb } from '../hooks/useStore';
 import { Sheet } from './Sheet';
 
 const PHONE_LABELS = ['mobile', 'home', 'work', 'main', 'fax', 'other'];
@@ -73,13 +74,16 @@ export function ContactEditor({
   open,
   contact,
   presetTag,
+  presetCategory,
   onClose,
 }: {
   open: boolean;
   contact: Contact | null;
   presetTag?: string | null;
+  presetCategory?: string | null;
   onClose: () => void;
 }) {
+  const db = useDb();
   const [first, setFirst] = useState('');
   const [last, setLast] = useState('');
   const [company, setCompany] = useState('');
@@ -90,6 +94,7 @@ export function ContactEditor({
   const [birthday, setBirthday] = useState('');
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [category, setCategory] = useState('');
   const [tagInput, setTagInput] = useState('');
 
   useEffect(() => {
@@ -105,6 +110,7 @@ export function ContactEditor({
       setBirthday(contact.birthday);
       setNotes(contact.notes);
       setTags([...contact.tags]);
+      setCategory(contact.category || '');
     } else {
       setFirst('');
       setLast('');
@@ -116,9 +122,10 @@ export function ContactEditor({
       setBirthday('');
       setNotes('');
       setTags(presetTag ? [presetTag] : []);
+      setCategory(presetCategory || '');
     }
     setTagInput('');
-  }, [open, contact, presetTag]);
+  }, [open, contact, presetTag, presetCategory]);
 
   function addTag(raw: string) {
     let t = raw.trim();
@@ -127,6 +134,11 @@ export function ContactEditor({
     if (existing) t = existing[0];
     if (!tags.includes(t)) setTags([...tags, t]);
     setTagInput('');
+  }
+
+  function toggleGroupTag(t: string) {
+    if (tags.includes(t)) setTags(tags.filter((x) => x !== t));
+    else setTags([...tags, t]);
   }
 
   function save() {
@@ -144,6 +156,7 @@ export function ContactEditor({
       birthday,
       notes,
       tags,
+      category,
     });
     onClose();
   }
@@ -159,6 +172,8 @@ export function ContactEditor({
     .map(([t]) => t)
     .filter((t) => !tags.includes(t) && (!tagInput || t.toLowerCase().includes(tagInput.toLowerCase())))
     .slice(0, 12);
+
+  const groupedTagNames = new Set(db.tagGroups.flatMap((g) => g.tags));
 
   return (
     <Sheet
@@ -192,6 +207,18 @@ export function ContactEditor({
         </label>
       </div>
 
+      <label>
+        Category
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">— None —</option>
+          {db.categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <MultiRows kind="Phone" labels={PHONE_LABELS} rows={phones} onChange={setPhones} />
       <MultiRows kind="Email" labels={EMAIL_LABELS} rows={emails} onChange={setEmails} />
 
@@ -217,9 +244,33 @@ export function ContactEditor({
             </button>
           ))}
         </div>
+        {db.tagGroups.map((g) =>
+          g.tags.length ? (
+            <div key={g.id} className="tag-group-block" style={{ marginTop: 8 }}>
+              <h4>{g.name}</h4>
+              <div className="suggest">
+                {g.tags.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={tags.includes(t) ? 'pill gold' : undefined}
+                    style={
+                      tags.includes(t)
+                        ? undefined
+                        : { border: '1px dashed var(--line)', borderRadius: 4, padding: '4px 10px' }
+                    }
+                    onClick={() => toggleGroupTag(t)}
+                  >
+                    {tags.includes(t) ? t : `+ ${t}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null,
+        )}
         <input
           value={tagInput}
-          placeholder="Add tag and press Enter"
+          placeholder="Add custom tag and press Enter"
           enterKeyHint="done"
           onChange={(e) => setTagInput(e.target.value)}
           onKeyDown={(e) => {
@@ -234,11 +285,13 @@ export function ContactEditor({
           }}
         />
         <div className="suggest">
-          {suggestions.map((t) => (
-            <button key={t} type="button" onClick={() => addTag(t)}>
-              + {t}
-            </button>
-          ))}
+          {suggestions
+            .filter((t) => !groupedTagNames.has(t))
+            .map((t) => (
+              <button key={t} type="button" onClick={() => addTag(t)}>
+                + {t}
+              </button>
+            ))}
         </div>
       </fieldset>
 

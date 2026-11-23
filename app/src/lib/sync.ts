@@ -1,7 +1,7 @@
 import { createClient, type Session, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { APP_CONFIG, syncConfigured } from './config';
 import { DIRS_SYNC_ID, Store } from './store';
-import type { Directory } from '../types';
+import type { CategoryDef, Directory, TagGroup } from '../types';
 
 const TABLE = 'contacts';
 const PAGE = 1000;
@@ -44,12 +44,18 @@ async function push() {
   const changes = Store.pendingChanges();
   for (let i = 0; i < changes.length; i += 500) {
     const chunk = changes.slice(i, i + 500);
-    const rows = chunk.map(({ id, contact, directories }) => {
+    const rows = chunk.map(({ id, contact, directories, taxonomy }) => {
       if (id === DIRS_SYNC_ID) {
         return {
           user_id: session!.user.id,
           id,
-          data: { directories: directories || [] },
+          data: taxonomy
+            ? {
+                directories: taxonomy.directories,
+                categories: taxonomy.categories,
+                tagGroups: taxonomy.tagGroups,
+              }
+            : { directories: directories || [] },
           deleted: false,
         };
       }
@@ -156,7 +162,12 @@ async function adoptSession(s: Session | null) {
       );
       if (keep) {
         const localDirs: Directory[] = Store.directories().map((d) => ({ ...d }));
-        // Keep contacts queued for upload, but do NOT upload directories until we merge with the account.
+        const localCategories: CategoryDef[] = Store.categories().map((c) => ({ ...c }));
+        const localTagGroups: TagGroup[] = Store.tagGroups().map((g) => ({
+          ...g,
+          tags: [...g.tags],
+        }));
+        // Keep contacts queued for upload, but do NOT upload taxonomy until we merge with the account.
         Store.resetForOwner(s.user.id, { keepContacts: true, queueDirectories: false });
         applyingRemote = true;
         try {
@@ -164,7 +175,11 @@ async function adoptSession(s: Session | null) {
         } finally {
           applyingRemote = false;
         }
-        Store.mergeDirectories(localDirs);
+        Store.mergeTaxonomy({
+          directories: localDirs,
+          categories: localCategories,
+          tagGroups: localTagGroups,
+        });
       } else {
         Store.resetForOwner(s.user.id);
       }
