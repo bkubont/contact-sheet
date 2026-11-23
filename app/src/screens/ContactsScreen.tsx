@@ -91,8 +91,11 @@ export function ContactsScreen({
   const visible = useMemo(() => {
     return db.contacts
       .filter((c) => {
-        if (categoryFilter === UNCAT) return !c.category;
-        if (categoryFilter && c.category !== categoryFilter) return false;
+        if (categoryFilter === UNCAT) {
+          if (c.category) return false;
+        } else if (categoryFilter && c.category !== categoryFilter) {
+          return false;
+        }
         if (tag === null) return true;
         if (tag === UNTAGGED) return !c.tags.length;
         return c.tags.includes(tag);

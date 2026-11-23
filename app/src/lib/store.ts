@@ -94,6 +94,25 @@ function normalizeTagGroup(g: Partial<TagGroup> & { id?: string; name?: string }
   };
 }
 
+function resolveCategories(raw: Record<string, unknown>): CategoryDef[] {
+  // Absent key (v2 / incomplete) → seed defaults. Explicit [] must stay empty.
+  if (!('categories' in raw) || raw.categories == null) {
+    return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  }
+  if (!Array.isArray(raw.categories)) return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  return (raw.categories as CategoryDef[]).map(normalizeCategory);
+}
+
+function resolveTagGroups(raw: Record<string, unknown>): TagGroup[] {
+  if (!('tagGroups' in raw) || raw.tagGroups == null) {
+    return DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+  }
+  if (!Array.isArray(raw.tagGroups)) {
+    return DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+  }
+  return (raw.tagGroups as TagGroup[]).map(normalizeTagGroup);
+}
+
 function migrateToV3(raw: Record<string, unknown>): Db {
   const contacts = Array.isArray(raw.contacts)
     ? (raw.contacts as Contact[])
@@ -101,13 +120,13 @@ function migrateToV3(raw: Record<string, unknown>): Db {
         .map((c) => normalizeContact({ ...c, updated: c.updated || Date.now() }))
     : [];
   const directories = Array.isArray(raw.directories) ? (raw.directories as Directory[]) : [];
-  const categories = Array.isArray(raw.categories) && (raw.categories as CategoryDef[]).length
-    ? (raw.categories as CategoryDef[]).map(normalizeCategory)
-    : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-  const tagGroups = Array.isArray(raw.tagGroups) && (raw.tagGroups as TagGroup[]).length
-    ? (raw.tagGroups as TagGroup[]).map(normalizeTagGroup)
-    : DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
-  return { version: 3, contacts, directories, categories, tagGroups };
+  return {
+    version: 3,
+    contacts,
+    directories,
+    categories: resolveCategories(raw),
+    tagGroups: resolveTagGroups(raw),
+  };
 }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -580,8 +599,8 @@ export const Store = {
         if (r.deleted) {
           if (directories.length || categories.length || tagGroups.length) {
             directories = [];
-            categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-            tagGroups = DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+            categories = [];
+            tagGroups = [];
             changed++;
           }
         } else {
@@ -595,16 +614,14 @@ export const Store = {
           if (Array.isArray(r.data?.categories)) {
             const incoming = (r.data.categories as CategoryDef[]).map(normalizeCategory);
             if (JSON.stringify(incoming) !== JSON.stringify(categories)) {
-              categories = incoming.length ? incoming : DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+              categories = incoming;
               changed++;
             }
           }
           if (Array.isArray(r.data?.tagGroups)) {
             const incoming = (r.data.tagGroups as TagGroup[]).map(normalizeTagGroup);
             if (JSON.stringify(incoming) !== JSON.stringify(tagGroups)) {
-              tagGroups = incoming.length
-                ? incoming
-                : DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
+              tagGroups = incoming;
               changed++;
             }
           }
@@ -665,12 +682,45 @@ export const Store = {
   },
   /** Merge local directories into current set by id (prefer newer `updated`). Queues dirs for upload. */
   mergeDirectories(local: Directory[]) {
-    const byId = new Map(db.directories.map((d) => [d.id, d]));
-    for (const d of local) {
-      const existing = byId.get(d.id);
-      if (!existing || (d.updated || 0) >= (existing.updated || 0)) byId.set(d.id, d);
+    this.mergeTaxonomy({ directories: local, categories: [], tagGroups: [] });
+  },
+  /** Merge local directories + categories + tag groups after adopting an account. Queues taxonomy upload. */
+  mergeTaxonomy(local: TaxonomyPayload) {
+    const dirById = new Map(db.directories.map((d) => [d.id, d]));
+    for (const d of local.directories) {
+      const existing = dirById.get(d.id);
+      if (!existing || (d.updated || 0) >= (existing.updated || 0)) dirById.set(d.id, d);
     }
-    db = { ...db, directories: [...byId.values()] };
+
+    const catById = new Map(db.categories.map((c) => [c.id, c]));
+    for (const c of local.categories) {
+      // Local definitions win on id collision so device customizations survive the pull.
+      catById.set(c.id, normalizeCategory(c));
+    }
+
+    const groupById = new Map(db.tagGroups.map((g) => [g.id, g]));
+    for (const g of local.tagGroups) {
+      const existing = groupById.get(g.id);
+      if (!existing) {
+        groupById.set(g.id, normalizeTagGroup(g));
+      } else {
+        groupById.set(
+          g.id,
+          normalizeTagGroup({
+            id: g.id,
+            name: g.name || existing.name,
+            tags: [...new Set([...existing.tags, ...g.tags])],
+          }),
+        );
+      }
+    }
+
+    db = {
+      ...db,
+      directories: [...dirById.values()],
+      categories: [...catById.values()],
+      tagGroups: [...groupById.values()],
+    };
     meta.pending[DIRS_SYNC_ID] = Date.now();
     persistDb(db);
     persistMeta();
