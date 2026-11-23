@@ -1,18 +1,14 @@
-# Contacts
+# Contact Sheet — product notes
 
-_A short description of what this document is about._
+Personal directory PDF maker from selected contacts, plus a tagged master list.
 
----
+## Core jobs
+1. Hold every personal contact in one master list
+2. Tag contacts so filtering is fast
+3. Save named directories (smart-by-tag or fixed selection)
+4. Produce a clean printable PDF of a selection or directory
 
-## Overview
+## Not this product
+Company CRM / jobs / properties — that lives in Canopy Estimate. The old React CRM under `app/` was replaced by this Contact Sheet rebuild.
 
-Briefly explain the purpose of this document. What problem does it address? Who is it for?
-
-## Key Points
-
-- Point one
-- Point two
-- Point three
-
-
-_Last updated: YYYY-MM-DD_
+_Last updated: 2026-11-22_

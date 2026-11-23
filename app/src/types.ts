@@ -1,74 +1,75 @@
-// Core data model for Canopy Clients.
-// Every record carries `updatedAt` so it can sync to the cloud later.
-
 export interface LabeledValue {
-  label: string; // mobile, home, work, other…
+  label: string;
   value: string;
 }
 
-export interface Property {
-  id: string;
-  address: string;
-  gateCode: string;
-  access: string;   // parking, dogs, where to enter…
-  hazards: string[]; // power lines, structures, slope…
-  treeNotes: string;
-}
-
-export interface Customer {
+export interface Contact {
   id: string;
   first: string;
   last: string;
   company: string;
+  title: string;
   phones: LabeledValue[];
   emails: LabeledValue[];
-  properties: Property[];
-  tagIds: string[];
+  address: string;
+  birthday: string;
   notes: string;
-  sample?: boolean; // example data that can be cleared in one tap
-  createdAt: number;
-  updatedAt: number;
+  tags: string[];
+  created: number;
+  updated: number;
 }
 
-export interface Tag {
+/** Named list you can reopen and turn into a PDF. */
+export interface Directory {
   id: string;
   name: string;
-  color?: string;
+  notes: string;
+  /** manual = fixed members; smart = tag filter that stays current */
+  mode: 'manual' | 'smart';
+  contactIds: string[];
+  tags: string[];
+  match: 'any' | 'all';
+  created: number;
+  updated: number;
 }
 
-// mode 'one'  → a customer holds at most one tag from this group (Stage, Customer type…)
-// mode 'many' → any number (Services, Job flags…)
-export interface TagGroup {
-  id: string;
-  name: string;
-  mode: 'one' | 'many';
-  pipeline?: boolean; // ordered stage group, drives colors and follow-ups
-  allowNew?: boolean; // type a new tag straight onto a customer
-  tags: Tag[];
-  updatedAt: number;
-}
+export type PdfLayout = 'cards' | 'list' | 'table';
+export type PdfSort = 'last' | 'first' | 'company';
 
-export type ActivityType = 'note' | 'call' | 'text' | 'stage' | 'created' | 'imported';
-
-export interface Activity {
-  id: string;
-  customerId: string;
-  type: ActivityType;
-  body: string;
-  at: number;
-  updatedAt: number;
-}
-
-export interface Settings {
-  businessName: string;
-  yourName: string;
-  updatedAt: number;
+export interface PdfOptions {
+  title: string;
+  subtitle: string;
+  layout: PdfLayout;
+  sort: PdfSort;
+  paper: 'letter' | 'a4';
+  cover: boolean;
+  f_company: boolean;
+  f_phones: boolean;
+  f_emails: boolean;
+  f_address: boolean;
+  f_birthday: boolean;
+  f_tags: boolean;
+  f_notes: boolean;
 }
 
 export interface Db {
-  version: 1;
-  customers: Customer[];
-  tagGroups: TagGroup[];
-  activities: Activity[];
-  settings: Settings;
+  version: 2;
+  contacts: Contact[];
+  directories: Directory[];
 }
+
+export const DEFAULT_PDF: PdfOptions = {
+  title: 'Contact Sheet',
+  subtitle: '',
+  layout: 'list',
+  sort: 'last',
+  paper: 'letter',
+  cover: true,
+  f_company: true,
+  f_phones: true,
+  f_emails: true,
+  f_address: true,
+  f_birthday: false,
+  f_tags: false,
+  f_notes: false,
+};

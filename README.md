@@ -1,60 +1,41 @@
 # Contact Sheet
 
-A small web app you can add to your phone's Home Screen. It holds your contact list,
-lets you tag contacts and add new ones, and makes a printable PDF of whichever
-contacts you pick.
+A personal contact directory you can add to your phone’s Home Screen. Keep a master
+list of contacts, tag them for filtering, save named directories, and make a printable PDF
+of whoever you pick.
 
-> **Company CRM is not this repo.** The Canopy Clients prototype under [`app/`](app/) is **retired / frozen**. Company customer CRM lives in [Canopy Estimate](https://github.com/bkubont/canopy-estimate). This **root** Contact Sheet app remains the continuing personal / App Store product.
+## Active app (React)
 
-## Features
-- **Import** your existing contacts from a `.vcf` (iPhone / vCard) or `.csv` (Google, Outlook) file — duplicates are skipped.
-- **Add / edit / delete** contacts: name, company, title, multiple phones & emails, address, birthday, notes.
-- **Tags**: add tags per contact, tag many at once, filter the list by tag, rename or delete tags.
-- **Make PDF** of the selected contacts in three layouts — *Cards*, *List* (A–Z directory), or *Table* — choose which fields to include, sort order and paper size. Share it, print it or save it.
-- **Optional account**: sign in with email + password and your contacts sync across every device (phone, tablet, computer). Without an account, everything stays on the device.
-- Works **offline** once installed; changes sync when you're back online.
-- Delete-my-account and a privacy policy, ready for the App Store (see [docs/APP_STORE.md](docs/APP_STORE.md)).
-- Back up / restore (`.json`) and export everything as `.vcf`.
+The product lives in [`app/`](app/):
 
-## Typical use
-1. Tap a tag chip (e.g. *Family*) to filter → **Select all** → **Make PDF**.
-2. Or tick contacts one by one with the circles on the left.
+```bash
+cd app
+npm install
+npm run dev      # local development
+npm run build    # static files → app/dist/
+```
 
-## Getting your contacts in
-- **iPhone:** Contacts app → *Lists* → press and hold *All Contacts* → *Export* → save to Files. Then in Contact Sheet: ☰ → *Import*.
-- **Google / Android:** contacts.google.com → *Export* → vCard or Google CSV.
+### Features
+- **Master list** — add / edit / delete contacts; search by name, company, phone, tag
+- **Tags** — per contact, bulk tag selected people, filter chips (including Untagged), rename / delete tags
+- **Directories** — smart lists driven by tags (always up to date) or saved selections you can reopen
+- **Make PDF** — cover page with letter index, plus Cards / List / Table layouts; choose fields, sort, paper size; share or download
+- **Import** `.vcf` / `.csv` (dupes skipped); **export** `.vcf`; JSON backup / restore
+- Migrates data from the older vanilla app’s `localStorage` keys automatically
 
-## Putting it on your Home Screen
-The app is static files (no server code), so any HTTPS host works. With GitHub Pages:
-1. In the repo on GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch**, choose the branch and `/ (root)`, Save.
-2. After a minute it's live at `https://<your-username>.github.io/contact-sheet/`.
-3. On iPhone open that link in **Safari** → Share button → **Add to Home Screen**. (Android/Chrome: menu → *Install app*.)
+### Typical use
+1. Import contacts → tag them (e.g. *Family*)
+2. Filter by tag → **PDF these**, or select → **Save list** / **Make PDF**
+3. Or open **Directories** → create a smart list from tags → **Make PDF**
 
-> GitHub Pages on a private repository needs a paid GitHub plan; otherwise make the repo public
-> (your contacts are never in the repo — they live only on your phone) or use another static host such as Netlify or Cloudflare Pages.
+## Putting it on the web
+Deploy the contents of `app/dist/` to any static host (GitHub Pages, Netlify, Cloudflare Pages, Hostinger). On iPhone: open the URL in Safari → Share → **Add to Home Screen**.
 
-## Turn on accounts (sign in anywhere)
-Accounts use [Supabase](https://supabase.com) (free to start). One-time setup, about 10 minutes:
-1. Create a free account at supabase.com → **New project** (pick a region near you, save the database password somewhere safe).
-2. In the project: **SQL Editor → New query**, paste everything from [`supabase/schema.sql`](supabase/schema.sql), click **Run**.
-3. **Authentication → URL Configuration**: set *Site URL* to your app's address (e.g. `https://<your-username>.github.io/contact-sheet/`) and add the same address under *Redirect URLs*.
-4. **Project Settings → API**: copy the *Project URL* and the *anon public* key into [`js/config.js`](js/config.js).
-5. Commit and push. The menu now shows **Sign in or create account**.
+## Legacy vanilla app
+The root `index.html` + `js/` PWA is the previous Contact Sheet. It still works offline for existing installs. New development happens in `app/`. Cloud sync (Supabase) from the vanilla app is documented under [`supabase/`](supabase/) and can be re-wired into the React app later.
 
-The anon key is designed to be public. Each person can only read and change their own contacts because of the database's row-level security rules in `schema.sql`.
+## App Store path
+See [`docs/APP_STORE.md`](docs/APP_STORE.md) for Capacitor wrapping and review notes.
 
-## Notes
-- Without an account, data lives only in the installed app. Deleting it from the Home Screen deletes the data, so use **Back up** occasionally (or sign in).
-- Signing out removes contacts from that device (they stay in your account), so shared devices are safe.
-- The PDF uses standard fonts, so emoji and non-Latin scripts (e.g. Chinese, Arabic) are left out of the PDF.
-
-## Files
-- `index.html`, `styles.css` — the page
-- `js/store.js` — on-device storage + change tracking
-- `js/sync.js`, `js/config.js` — accounts and cloud sync (Supabase)
-- `supabase/schema.sql` — database table and security rules
-- `privacy.html` — privacy policy (draft — fill in the bracketed parts)
-- `docs/APP_STORE.md` — roadmap to the App Store
-- `js/importers.js` — vCard/CSV import, vCard export
-- `js/pdf.js` — PDF layouts (uses bundled [jsPDF](https://github.com/parallax/jsPDF), MIT)
-- `sw.js`, `manifest.webmanifest`, `icons/` — offline + Home Screen install
+## Privacy
+[`privacy.html`](privacy.html) — draft; fill in the bracketed parts before shipping.

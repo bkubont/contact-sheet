@@ -1,78 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { Customer } from './types';
-import { ConfirmHost, ToastHost } from './lib/ui';
-import People from './screens/People';
-import CustomerView from './screens/CustomerView';
-import EditCustomer from './screens/EditCustomer';
-import Today from './screens/Today';
-import More from './screens/More';
-import { Soon } from './screens/Soon';
+import { useState } from 'react';
+import { ContactsScreen } from './screens/ContactsScreen';
+import { DirectoriesScreen } from './screens/DirectoriesScreen';
+import { MenuSheet } from './components/MenuSheet';
 
-export type Tab = 'today' | 'people' | 'lists' | 'calendar' | 'more';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: 'people', label: 'People' },
-  { id: 'lists', label: 'Lists' },
-  { id: 'calendar', label: 'Calendar' },
-  { id: 'more', label: 'More' },
-];
-
-// Routes live in the URL hash so the phone's back gesture works: #people, #c-<id>
-function parse(): { tab: Tab; customerId?: string } {
-  const h = location.hash.replace(/^#/, '');
-  if (h.startsWith('c-')) return { tab: 'people', customerId: h.slice(2) };
-  if (TABS.some((t) => t.id === h)) return { tab: h as Tab };
-  return { tab: 'today' };
-}
+type Tab = 'contacts' | 'directories';
 
 export default function App() {
-  const [route, setRoute] = useState(parse);
-  const [editing, setEditing] = useState<Customer | null | undefined>(undefined); // undefined = closed, null = new
-
-  useEffect(() => {
-    const on = () => { setRoute(parse()); window.scrollTo(0, 0); };
-    window.addEventListener('hashchange', on);
-    return () => window.removeEventListener('hashchange', on);
-  }, []);
-
-  const go = useCallback((hash: string) => { location.hash = hash; }, []);
-  const openCustomer = useCallback((id: string) => go(`c-${id}`), [go]);
-
-  let screen;
-  if (route.customerId) {
-    screen = <CustomerView id={route.customerId} onBack={() => history.length > 1 ? history.back() : go('people')} onEdit={(c) => setEditing(c)} />;
-  } else if (route.tab === 'people') {
-    screen = <People onOpen={openCustomer} />;
-  } else if (route.tab === 'today') {
-    screen = <Today onOpen={openCustomer} onGo={go} />;
-  } else if (route.tab === 'more') {
-    screen = <More />;
-  } else if (route.tab === 'calendar') {
-    screen = <Soon title="Calendar" heading="Job calendar is next" text="Estimates and jobs on one calendar with day and week views, crew and equipment, multi-day jobs, double-booking warnings, and drag to schedule. Coming in milestone 2." />;
-  } else {
-    screen = <Soon title="Lists" heading="Smart lists are coming" text="Saved searches like “Estimates going cold” and “Annual trim due” that keep themselves up to date. Coming in milestone 4. For now, filter by stage on the People tab." />;
-  }
+  const [tab, setTab] = useState<Tab>('contacts');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="app">
-      {screen}
-      {!route.customerId && route.tab !== 'more' && (
-        <button className="fab" aria-label="Add customer" onClick={() => setEditing(null)}>+</button>
+    <div className="app-shell">
+      {tab === 'contacts' ? (
+        <ContactsScreen onOpenMenu={() => setMenuOpen(true)} />
+      ) : (
+        <DirectoriesScreen />
       )}
+
       <nav className="tabbar" aria-label="Main">
-        {TABS.map((t) => (
-          <button key={t.id} className={route.tab === t.id && !route.customerId ? 'on' : ''} onClick={() => go(t.id)}>{t.label}</button>
-        ))}
+        <button
+          type="button"
+          className={`tab${tab === 'contacts' ? ' on' : ''}`}
+          onClick={() => setTab('contacts')}
+        >
+          <svg viewBox="0 0 24 24">
+            <circle cx="9" cy="8" r="3.5" />
+            <path d="M3.5 19c1.5-3.5 4-5 5.5-5s4 1.5 5.5 5" />
+            <circle cx="17" cy="9" r="2.5" />
+            <path d="M14.5 19c.6-1.8 1.7-2.8 2.5-2.8.8 0 1.9 1 2.5 2.8" />
+          </svg>
+          Contacts
+        </button>
+        <button
+          type="button"
+          className={`tab${tab === 'directories' ? ' on' : ''}`}
+          onClick={() => setTab('directories')}
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
+          Directories
+        </button>
       </nav>
-      {editing !== undefined && (
-        <EditCustomer
-          customer={editing}
-          onClose={() => setEditing(undefined)}
-          onSaved={(c, isNew) => { setEditing(undefined); if (isNew) openCustomer(c.id); }}
-        />
-      )}
-      <ConfirmHost />
-      <ToastHost />
+
+      <MenuSheet open={menuOpen} onClose={() => setMenuOpen(false)} />
     </div>
   );
 }
