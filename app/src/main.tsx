@@ -4,6 +4,15 @@ import '@fontsource-variable/outfit/wght.css';
 import '@fontsource-variable/fraunces/wght.css';
 import './styles.css';
 import App from './App';
+import { Sync } from './lib/sync';
+
+Sync.startSync();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('SW register failed', err));
+  });
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

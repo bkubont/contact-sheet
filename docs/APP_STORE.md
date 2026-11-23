@@ -2,18 +2,18 @@
 
 This is the roadmap from today's web app to an app other people can download.
 
-The **active UI** is the React app in [`app/`](../app/). Account/sync was built for the
-legacy vanilla PWA (`js/sync.js` + `supabase/schema.sql`) and still needs to be wired
-into the React app before shipping a synced App Store build.
+The **active UI** is the React app in [`app/`](../app/). Account/sync is wired there
+(`app/src/lib/sync.ts`) against [`supabase/schema.sql`](../supabase/schema.sql). Set
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` at build time to turn it on.
 
-## 1. Accounts & sync — built in legacy; re-wire for React
-- Sign up / sign in with email + password, password reset, sign out (vanilla app).
-- Contacts sync between every device you sign in on, and still work offline.
-- Each person's contacts are private to them (enforced by the database, not just the app).
+## 1. Accounts & sync — ✅ in React
+- Sign up / sign in with email + password, password reset, sign out.
+- Contacts and directories sync between every device you sign in on, and still work offline.
+- Each person's data is private to them (enforced by the database, not just the app).
 - In-app **Delete my account** (Apple requires this for any app with sign-up).
 - Signing in is optional — the app is fully usable without an account (Apple prefers this).
 
-**Schema:** [`supabase/schema.sql`](../supabase/schema.sql). Re-attach these flows inside `app/` before relying on sync in production.
+**Schema:** [`supabase/schema.sql`](../supabase/schema.sql).
 
 ## 2. Privacy policy — ✅ drafted
 `privacy.html` is a starting draft. Fill in the [bracketed] parts and have it reviewed.

@@ -30,6 +30,7 @@ export function PdfSheet({
 }) {
   const [opts, setOpts] = useState<PdfOptions>(() => loadOpts());
   const [busy, setBusy] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -39,18 +40,52 @@ export function PdfSheet({
       title: defaultTitle || base.title || 'Contact Sheet',
       subtitle: defaultTitle ? base.subtitle : base.subtitle,
     });
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, [open, defaultTitle]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   function set<K extends keyof PdfOptions>(key: K, value: PdfOptions[K]) {
     setOpts((o) => ({ ...o, [key]: value }));
+  }
+
+  async function buildBlob() {
+    localStorage.setItem(PDF_KEY, JSON.stringify(opts));
+    return makePdf(contacts, opts);
+  }
+
+  async function preview() {
+    if (!contacts.length || busy) return;
+    setBusy(true);
+    try {
+      const blob = await buildBlob();
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      window.open(url, '_blank', 'noopener');
+      toast('Preview opened');
+    } catch (e) {
+      console.error(e);
+      toast('Could not preview PDF');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function generate() {
     if (!contacts.length || busy) return;
     setBusy(true);
     try {
-      localStorage.setItem(PDF_KEY, JSON.stringify(opts));
-      const blob = await makePdf(contacts, opts);
+      const blob = await buildBlob();
       const safeName = (opts.title || 'Contact Sheet').replace(/[^\w\- ]+/g, '').trim() || 'Contact Sheet';
       await shareOrDownloadPdf(blob, `${safeName}.pdf`);
       toast('PDF ready');
@@ -143,6 +178,10 @@ export function PdfSheet({
           </select>
         </label>
       </div>
+
+      <button type="button" className="btn wide" disabled={busy || !contacts.length} onClick={preview}>
+        Preview in new tab
+      </button>
     </Sheet>
   );
 }

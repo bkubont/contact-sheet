@@ -1,18 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ContactsScreen } from './screens/ContactsScreen';
 import { DirectoriesScreen } from './screens/DirectoriesScreen';
 import { MenuSheet } from './components/MenuSheet';
+import { Sync, type SyncStatus } from './lib/sync';
 
 type Tab = 'contacts' | 'directories';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('contacts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(Sync.status);
+
+  useEffect(() => {
+    const off = Sync.onStatus(setSyncStatus);
+    return () => {
+      off();
+    };
+  }, []);
+
+  const showDot = Sync.enabled && !!Sync.user;
+  const dotClass =
+    syncStatus.state === 'error'
+      ? 'error'
+      : syncStatus.state === 'syncing' || syncStatus.state === 'offline'
+        ? 'syncing'
+        : '';
 
   return (
     <div className="app-shell">
       {tab === 'contacts' ? (
-        <ContactsScreen onOpenMenu={() => setMenuOpen(true)} />
+        <ContactsScreen
+          onOpenMenu={() => setMenuOpen(true)}
+          syncDot={showDot ? dotClass || 'ok' : null}
+        />
       ) : (
         <DirectoriesScreen />
       )}

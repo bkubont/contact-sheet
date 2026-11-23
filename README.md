@@ -16,11 +16,13 @@ npm run build    # static files → app/dist/
 ```
 
 ### Features
-- **Master list** — add / edit / delete contacts; search by name, company, phone, tag
-- **Tags** — per contact, bulk tag selected people, filter chips (including Untagged), rename / delete tags
-- **Directories** — smart lists driven by tags (always up to date) or saved selections you can reopen
-- **Make PDF** — cover page with letter index, plus Cards / List / Table layouts; choose fields, sort, paper size; share or download
-- **Import** `.vcf` / `.csv` (dupes skipped); **export** `.vcf`; JSON backup / restore
+- **Master list** — add / edit / delete contacts; search; bulk delete / export
+- **Tags** — per contact, bulk tag, filter chips (including Untagged), rename / delete
+- **Directories** — editable smart lists (by tags) or saved selections (merge/replace)
+- **Make PDF** — cover page, in-tab preview, Cards / List / Table; share or download
+- **Import** with preview; **export** `.vcf`; JSON backup / restore with confirmation
+- **Optional sync** — Supabase (set `VITE_SUPABASE_*` when building `app/`)
+- **Offline PWA** via service worker
 - Migrates data from the older vanilla app’s `localStorage` keys automatically
 
 ### Typical use
