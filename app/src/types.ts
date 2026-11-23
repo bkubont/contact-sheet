@@ -18,6 +18,14 @@ export interface TagGroup {
   tags: string[];
 }
 
+/** Link from a personal contact to a customer in Canopy Estimate (same Supabase project). */
+export interface CanopyLink {
+  orgId: string;
+  customerId: string;
+  /** Customer name at the time of linking, shown when offline. */
+  name: string;
+}
+
 export interface Contact {
   id: string;
   first: string;
@@ -32,6 +40,8 @@ export interface Contact {
   tags: string[];
   /** Primary category id (from Db.categories), or empty. */
   category: string;
+  /** Set when this person is linked to a Canopy Estimate customer. */
+  canopy?: CanopyLink | null;
   created: number;
   updated: number;
 }

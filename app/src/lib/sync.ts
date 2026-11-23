@@ -237,6 +237,10 @@ export function startSync() {
 
 export const Sync = {
   enabled: syncConfigured,
+  /** The signed-in Supabase client (shared with Canopy Estimate's project), or null. */
+  get client(): SupabaseClient | null {
+    return session ? client : null;
+  },
   get user(): User | null {
     return session?.user ?? null;
   },

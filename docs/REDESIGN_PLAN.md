@@ -286,10 +286,13 @@ RLS: owner/office read, same as invoices. These are true copies: they show exact
 | C4. Canopy connection in Settings, linking flow, match suggestions | contact-sheet | M |
 | C5. Contact detail screen with Work history, PDF cache | contact-sheet | M |
 
-This fits after phase 4 (navigation), because it needs the Settings screen and a contact detail screen. C1–C3 can be built in Canopy at any time.
 
-### Questions
-1. Does Contact Sheet's sync use the **same Supabase project** as Canopy Estimate? (Same project means one sign-in; different projects means two, which also works.)
-2. Who will use the connection: only you (owner), or office staff too? Crew can't see invoices under Canopy's current rules.
-3. "Completed" means status **Done**, or only once the invoice is **paid**? (Recommended: Done, with a Paid/Balance badge.)
-4. OK to make changes in the `canopy-estimate` repo (C1–C3)? This session can read it but needs push access to change it.
+
+### Answers (2026-11-23)
+Same Supabase project · owner only · completed = Done (or invoiced/paid) with a Paid/Balance badge · OK to change `canopy-estimate`.
+
+### Status
+- **C1–C3 built** in `canopy-estimate` on branch `claude/happy-brahmagupta-vtle1a`: migrations `20261126000000_documents.sql` and `20261126000100_documents_storage.sql`, the copy saver (`web/src/lib/documents.ts`, runs after each sync for owner/office, a few at a time, which also covers past jobs), database and unit tests.
+  - A change from the first sketch: copies are drawn **after sync**, not at the moment of signing, because customers can sign remotely through their link. Signed estimates and sent invoices are locked by the server, so the copy matches what was signed or sent.
+- **C4–C5 built** in Contact Sheet ahead of the navigation work: Menu → *Canopy Estimate* (company, linked count, clear downloads), and a *Canopy Estimate* section in each contact (link with suggestions/search, work history, PDF copies kept on the device). These move into Settings and the contact detail screen in phase 4.
+- Shared login: Contact Sheet's "Delete account" became "Delete my Contact Sheet data" so it can never delete the Canopy login.

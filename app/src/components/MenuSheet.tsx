@@ -8,6 +8,7 @@ import type { Contact } from '../types';
 import { Sheet } from './Sheet';
 import { AccountSheet } from './AccountSheet';
 import { GroupsSheet } from './GroupsSheet';
+import { CanopySheet } from './CanopySheet';
 
 export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const db = useDb();
@@ -19,6 +20,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [preview, setPreview] = useState<{ total: number; wouldAdd: number; wouldSkip: number; samples: Contact[] } | null>(null);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
+  const [canopyOpen, setCanopyOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreText, setRestoreText] = useState('');
@@ -126,7 +128,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
   }
 
   const counts = Store.tagCounts();
-  const mainOpen = open && !importOpen && !tagsOpen && !groupsOpen && !accountOpen && !restoreOpen;
+  const mainOpen = open && !importOpen && !tagsOpen && !groupsOpen && !accountOpen && !restoreOpen && !canopyOpen;
 
   return (
     <>
@@ -166,6 +168,11 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
           >
             {Sync.enabled ? (Sync.user ? `Account · ${Sync.user.email}` : 'Sign in / account') : 'Account (optional sync)'}
           </button>
+          {Sync.enabled && (
+            <button type="button" onClick={() => setCanopyOpen(true)}>
+              Canopy Estimate (work history)
+            </button>
+          )}
           <div className="sep" />
           <button type="button" style={{ color: 'var(--danger)' }} onClick={wipe}>
             Delete all data
@@ -301,6 +308,14 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
       </Sheet>
 
       <GroupsSheet open={groupsOpen} onClose={() => setGroupsOpen(false)} />
+      <CanopySheet
+        open={canopyOpen}
+        onClose={() => setCanopyOpen(false)}
+        onOpenAccount={() => {
+          setCanopyOpen(false);
+          setAccountOpen(true);
+        }}
+      />
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
     </>
   );

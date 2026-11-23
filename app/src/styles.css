@@ -666,3 +666,21 @@ legend { padding: 0 6px; font-size: 0.85rem; font-weight: 750; color: var(--acce
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Canopy Estimate work history */
+.wh { display: grid; gap: 10px; }
+.wh-linked { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wh-note { margin: 0; font-size: 0.85rem; }
+.wh-error { margin: 0; color: var(--danger); font-weight: 600; }
+.wh-job { background: var(--surface-solid); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 10px 12px; display: grid; gap: 4px; }
+.wh-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wh-top .wh-badge { margin-left: auto; }
+.wh-meta { font-size: 0.85rem; }
+.wh-badge { font-size: 0.75rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: var(--chip); color: var(--text); }
+.wh-badge.paid { background: #e3f1e6; color: #1f5f32; }
+.wh-badge.due { background: #fbeedd; color: #7a4a12; }
+.wh-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.wh-doc { font-size: 0.85rem; font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; color: var(--accent-2); text-decoration: none; background: var(--surface-solid); }
+.wh-doc.muted { color: var(--muted); }
+.wh-matches { display: grid; gap: 6px; }
+.wh-match { display: grid; gap: 2px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 10px 12px; background: var(--surface-solid); }

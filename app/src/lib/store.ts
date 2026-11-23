@@ -1,4 +1,4 @@
-import type { CategoryDef, Contact, Db, Directory, LabeledValue, TagGroup } from '../types';
+import type { CanopyLink, CategoryDef, Contact, Db, Directory, LabeledValue, TagGroup } from '../types';
 import { DEFAULT_CATEGORIES, DEFAULT_TAG_GROUPS } from '../types';
 import { uid } from './util';
 
@@ -36,6 +36,12 @@ function list(arr: unknown): LabeledValue[] {
     .filter((x) => x.value);
 }
 
+function normalizeCanopy(l: unknown): CanopyLink | null {
+  const x = l as Partial<CanopyLink> | null | undefined;
+  if (!x || !clean(x.orgId) || !clean(x.customerId)) return null;
+  return { orgId: clean(x.orgId), customerId: clean(x.customerId), name: clean(x.name) };
+}
+
 export function normalizeContact(c: Partial<Contact> & { id?: string }): Contact {
   const tags = [...new Set((c.tags || []).map(clean).filter(Boolean))];
   return {
@@ -51,6 +57,7 @@ export function normalizeContact(c: Partial<Contact> & { id?: string }): Contact
     notes: clean(c.notes),
     tags,
     category: clean(c.category),
+    canopy: normalizeCanopy(c.canopy),
     created: c.created || Date.now(),
     updated: Date.now(),
   };
@@ -283,10 +290,17 @@ export const Store = {
     const i = contacts.findIndex((x) => x.id === n.id);
     if (i >= 0) {
       n.created = contacts[i].created;
+      // Editing a contact never drops its Canopy link unless asked to.
+      if (!('canopy' in c)) n.canopy = contacts[i].canopy ?? null;
       contacts[i] = n;
     } else contacts.push(n);
     commit({ ...db, contacts }, [n.id]);
     return n;
+  },
+  /** Link a contact to a Canopy Estimate customer, or unlink it (null). */
+  setCanopy(id: string, link: CanopyLink | null) {
+    const contacts = db.contacts.map((c) => (c.id === id ? { ...c, canopy: link, updated: Date.now() } : c));
+    commit({ ...db, contacts }, [id]);
   },
   remove(id: string) {
     commit(
