@@ -1,3 +1,5 @@
+import type { ColorKey } from './lib/palette';
+
 export interface LabeledValue {
   label: string;
   value: string;
@@ -7,8 +9,8 @@ export interface LabeledValue {
 export interface CategoryDef {
   id: string;
   name: string;
-  /** Hex accent for chips / PDF accents */
-  color: string;
+  /** Color from the shared set (lib/palette.ts). Older saves used a hex value; it's converted on load. */
+  color: ColorKey;
 }
 
 /** Named group of related tags (contacts can pick tags from many groups). */
@@ -16,6 +18,8 @@ export interface TagGroup {
   id: string;
   name: string;
   tags: string[];
+  /** Tags in this group take this color. */
+  color: ColorKey;
 }
 
 /** Link from a personal contact to a customer in Canopy Estimate (same Supabase project). */
@@ -96,17 +100,17 @@ export interface Db {
 }
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { id: 'cat-family', name: 'Family', color: '#B45309' },
-  { id: 'cat-work', name: 'Work', color: '#1E3A8A' },
-  { id: 'cat-friends', name: 'Friends', color: '#D97706' },
-  { id: 'cat-community', name: 'Community', color: '#1D4ED8' },
-  { id: 'cat-other', name: 'Other', color: '#64748B' },
+  { id: 'cat-family', name: 'Family', color: 'terracotta' },
+  { id: 'cat-work', name: 'Work', color: 'denim' },
+  { id: 'cat-friends', name: 'Friends', color: 'teal' },
+  { id: 'cat-community', name: 'Community', color: 'plum' },
+  { id: 'cat-other', name: 'Other', color: 'stone' },
 ];
 
 export const DEFAULT_TAG_GROUPS: TagGroup[] = [
-  { id: 'tg-relationship', name: 'Relationship', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
-  { id: 'tg-role', name: 'Role', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
-  { id: 'tg-circle', name: 'Circle', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
+  { id: 'tg-relationship', name: 'Relationship', color: 'rose', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
+  { id: 'tg-role', name: 'Role', color: 'sage', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
+  { id: 'tg-circle', name: 'Circle', color: 'lavender', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
 ];
 
 export const DEFAULT_PDF: PdfOptions = {

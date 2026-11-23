@@ -209,10 +209,6 @@ button { cursor: pointer; }
 .chip .n { color: var(--muted); font-size: 0.8em; }
 .chip.on { background: var(--royal-soft); color: var(--royal-bright); border-color: var(--royal-bright); font-weight: 600; }
 .chip.on .n { color: inherit; opacity: 0.75; }
-.chip.cat::before {
-  content: ""; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--cat-color, var(--muted));
-}
 
 /* ---------------------------------------------------------------- contact list:
    one rounded group per letter, rows divided by hairlines */
@@ -566,6 +562,32 @@ legend { padding: 0 6px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0
   z-index: 300; max-width: 90vw;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------------------------------------------------------------- color set (lib/palette.ts sets --c-dot/--c-tint/--c-ink per [data-color]) */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-dot, var(--muted)); flex: none; }
+.pill[data-color] { background: var(--c-tint); color: var(--c-ink); }
+button.pill[data-color] { border: 0; cursor: pointer; }
+.chip[data-color]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c-dot); }
+.chip[data-color].on { background: var(--c-tint); color: var(--c-ink); border-color: var(--c-dot); }
+.row[data-color] { box-shadow: inset 3px 0 0 var(--c-dot); }
+.cat-line { display: inline-flex; align-items: center; gap: 6px; }
+.choice-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice-chips button {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 6px 12px; font-size: 0.88rem; font-weight: 500; min-height: 34px;
+}
+.choice-chips button[data-color]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c-dot); }
+.choice-chips button.on { background: var(--c-tint, var(--royal-soft)); color: var(--c-ink, var(--royal-bright)); border-color: var(--c-dot, var(--royal-bright)); font-weight: 600; }
+.choice-chips button.add { border-style: dashed; color: var(--muted); }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch-dot {
+  width: 28px; height: 28px; border-radius: 50%; padding: 0;
+  border: 2px solid var(--surface); background: var(--c-dot);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.swatch-dot.on { box-shadow: 0 0 0 2px var(--ink); }
+.tag-dots { display: inline-flex; gap: 3px; align-items: center; }
 
 /* ---------------------------------------------------------------- Canopy Estimate work history */
 .wh { display: grid; gap: 10px; }

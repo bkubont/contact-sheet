@@ -6,8 +6,10 @@ import './styles.css';
 import App from './App';
 import { Sync } from './lib/sync';
 import { applyAppearance } from './lib/theme';
+import { installPaletteCss } from './lib/palette';
 
 applyAppearance();
+installPaletteCss();
 
 Sync.startSync();
 
