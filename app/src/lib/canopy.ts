@@ -152,42 +152,14 @@ export const Canopy = {
     return { matches: (data || []) as CanopyMatch[] };
   },
 
-  /** Search customers by name, company or town. */
+  /** Search customers by name, company or town. Every word must match; the server checks them all before limiting. */
   async search(orgId: string, q: string): Promise<{ matches: CanopyMatch[]; error?: string }> {
     const client = Sync.client;
     if (!client) return { matches: [], error: 'Sign in first.' };
-    const words = q.trim().split(/\s+/).filter(Boolean).slice(0, 3);
-    if (!words.length) return { matches: [] };
-    // The server filters on the longest word; the rest are checked here.
-    const lead = [...words].sort((a, b) => b.length - a.length)[0].replace(/[%,().*\\]/g, '');
-    if (!lead) return { matches: [] };
-    const { data, error } = await client
-      .from('customers')
-      .select('id, first_name, last_name, company, town')
-      .eq('org_id', orgId)
-      .is('deleted_at', null)
-      .or(`first_name.ilike.%${lead}%,last_name.ilike.%${lead}%,company.ilike.%${lead}%,town.ilike.%${lead}%`)
-      .order('last_name')
-      .order('first_name')
-      .limit(50);
+    if (!q.trim()) return { matches: [] };
+    const { data, error } = await client.rpc('search_customers', { p_org: orgId, p_query: q });
     if (error) return { matches: [], error: friendly(error) };
-    type Row = { id: string; first_name: string; last_name: string; company: string; town: string };
-    const all = words.map((w) => w.toLowerCase());
-    const rows = ((data || []) as Row[])
-      .filter((r) => {
-        const hay = `${r.first_name} ${r.last_name} ${r.company} ${r.town}`.toLowerCase();
-        return all.every((w) => hay.includes(w));
-      })
-      .slice(0, 20);
-    return {
-      matches: rows.map((r) => ({
-        id: r.id,
-        name: [r.first_name, r.last_name].filter(Boolean).join(' ') || null,
-        company: r.company,
-        town: r.town,
-        matched_on: 'search' as const,
-      })),
-    };
+    return { matches: (data || []) as CanopyMatch[] };
   },
 
   /** Last history we saw for this customer, for showing offline. */

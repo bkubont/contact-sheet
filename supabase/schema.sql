@@ -46,6 +46,9 @@ grant select, insert, update, delete on public.contacts to authenticated;
 -- Lets a signed-in person erase everything Contact Sheet saved for them.
 -- The login itself is NOT deleted: this Supabase project is shared with
 -- Canopy Estimate, so removing auth.users would also remove that account.
+-- Rows become empty tombstones (deleted, no data) rather than disappearing, so
+-- the person's other signed-in devices see the erase on their next sync and
+-- clear their copies too, instead of uploading them again.
 drop function if exists public.delete_my_account();
 
 create or replace function public.delete_my_contact_sheet_data() returns void
@@ -54,7 +57,10 @@ begin
   if auth.uid() is null then
     raise exception 'not signed in';
   end if;
-  delete from public.contacts where user_id = auth.uid();
+  update public.contacts
+     set deleted = true, data = '{}'::jsonb
+   where user_id = auth.uid()
+     and not (deleted and data = '{}'::jsonb);
 end $$;
 
 revoke all on function public.delete_my_contact_sheet_data() from public, anon;
