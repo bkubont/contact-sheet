@@ -1,24 +1,24 @@
 # Contact Sheet (React)
 
-Personal contact directory: master list with tags, saved directories, and printable PDFs.
+Personal contact directory: master list with categories and tags, saved directories, and printable PDFs.
 
-This is the **active product** for this repo. The older vanilla PWA at the repository root is kept only for reference / migration of existing Home Screen installs; new work happens here.
+This is the **only** web app in the repository. Build output goes to `dist/` for static hosting.
 
 ## Features
 
-- **Master contacts list** — search, tag chips, multi-select, bulk delete / export
-- **Tags** — per contact, bulk tag, rename/delete, filter including Untagged
-- **Directories** — smart lists (editable tags/match) or saved selections; merge/replace on save
-- **PDF** — cover page, preview in tab, list / cards / table layouts, field toggles
-- **Import / export** — `.vcf` / `.csv` with preview, `.vcf` out, JSON backup/restore with confirm
-- **Optional cloud sync** — Supabase email/password (see below); works offline without an account
-- **Offline PWA** — service worker + manifest for Home Screen install
-- Migrates contacts from the legacy `contactSheet.contacts.v1` localStorage key
+- **Master contacts list** — search, category + tag chips, multi-select, bulk actions
+- **Categories & tag groups** — one primary category; tags organized into groups
+- **Directories** — smart lists (editable tags/match) or saved selections
+- **PDF** — themes, orientation, card columns, header/footer, cover, preview
+- **Import / export** — `.vcf` / `.csv` with preview, JSON backup/restore
+- **Optional cloud sync** — Supabase email/password (see below)
+- **Offline PWA** — service worker + Add to Home Screen guide
+- Migrates from older `localStorage` keys (`contactSheet.contacts.v1`, Db v2 → v3)
 
 ## Optional accounts / sync
 
 1. Create a Supabase project and run [`../supabase/schema.sql`](../supabase/schema.sql).
-2. Build with env vars (or set them in a local `.env`):
+2. Build with env vars (or a local `.env`):
 
 ```bash
 VITE_SUPABASE_URL=https://YOUR.supabase.co \
@@ -43,11 +43,4 @@ cd app
 npm run build
 ```
 
-Static output is in `app/dist/` (relative asset paths, works on GitHub Pages or any static host).
-
-## Typical use
-
-1. Import contacts (menu → Import)
-2. Tag people (Family, School, …)
-3. Filter → **PDF these**, or select → **Save list** / **Make PDF**
-4. Or open **Directories** → new smart list from tags → Make PDF
+Static output is in `app/dist/` (relative asset paths).
