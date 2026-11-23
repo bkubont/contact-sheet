@@ -40,7 +40,7 @@ body {
     radial-gradient(800px 480px at 100% 0%, #fde68a 0%, transparent 48%),
     linear-gradient(165deg, var(--bg0), var(--bg1) 42%, var(--bg2));
   background-attachment: fixed;
-  padding-bottom: calc(88px + var(--safe-bottom));
+  padding-bottom: calc(200px + var(--safe-bottom));
 }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -207,7 +207,7 @@ button { cursor: pointer; }
   color: var(--accent-ink);
   box-shadow: inset 0 -2px 0 var(--gold);
 }
-.pick svg { width: 14px; height: 14px; }
+.pick svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .row-main { min-width: 0; }
 .row-name { font-weight: 650; letter-spacing: -0.01em; }
 .row-meta { color: var(--muted); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -394,6 +394,8 @@ button { cursor: pointer; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 fieldset {
+  min-width: 0;
+  min-inline-size: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   margin: 0;
@@ -402,7 +404,9 @@ fieldset {
 }
 legend { padding: 0 6px; font-size: 0.85rem; font-weight: 750; color: var(--accent); }
 .multi { display: grid; gap: 8px; }
-.mrow { display: grid; grid-template-columns: 100px 1fr 36px; gap: 6px; align-items: center; }
+.mrow { display: grid; grid-template-columns: minmax(84px, 100px) minmax(0, 1fr) 36px; gap: 6px; align-items: center; }
+.grid2 > *, .grid3 > *, .mrow > * { min-width: 0; }
+.sheet-body input, .sheet-body select, .sheet-body textarea { min-width: 0; max-width: 100%; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .seg.four { grid-template-columns: repeat(4, 1fr); }
 .seg button {
@@ -419,8 +423,8 @@ legend { padding: 0 6px; font-size: 0.85rem; font-weight: 750; color: var(--acce
   border-color: var(--accent);
   box-shadow: inset 0 -2px 0 var(--gold);
 }
-.check { display: flex; align-items: center; gap: 8px; font-weight: 500; color: var(--text); }
-.check input { width: 18px; height: 18px; }
+.check, .sheet-body label.check { display: flex; flex-direction: row; align-items: center; gap: 10px; font-weight: 500; color: var(--text); }
+.check input, .sheet-body label.check input { width: 20px; height: 20px; flex: 0 0 auto; padding: 0; }
 .suggest { display: flex; flex-wrap: wrap; gap: 6px; }
 .suggest button {
   border: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line));
@@ -633,11 +637,8 @@ legend { padding: 0 6px; font-size: 0.85rem; font-weight: 750; color: var(--acce
   }
   .sheet-backdrop { align-items: center; padding: 24px; }
   .tabbar {
-    max-width: 480px;
-    left: max(0px, calc(50% - 240px));
-    right: max(0px, calc(50% - 240px));
-    width: auto;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-left: max(12px, calc(50% - 240px));
+    padding-right: max(12px, calc(50% - 240px));
   }
   .chip { padding: 9px 14px; }
   .row { padding: 14px; }

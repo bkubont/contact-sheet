@@ -204,7 +204,7 @@ Each phase can ship on its own. The app stays usable between phases.
 
 | Phase | Scope | Size |
 |---|---|---|
-| **1. Fixes** | B1, B2, B4, B5, B7, B10 (defaults only), B11 (publish `main` to `deploy`) | S |
+| **1. Fixes** | B1, B2, B4, B5, B7, B10 (defaults only) **— done 2026-11-23**; B11 publishing (see §5) | S |
 | **2. Theme** | §1 tokens, cut gold uses, flat surfaces, grouped list, logo icons, dark mode, PDF themes, install banner | M |
 | **3. Tag color model** | Db v4, palette, migration, group colors, category palette keys | M |
 | **4. Navigation** | 4 tabs, Settings, Tags screen, Select mode, selection bar, filter sheet (B3), sheet pattern, Confirm/Prompt sheets (B6, B9), sidebar on tablet | L |
@@ -221,11 +221,75 @@ Each phase can ship on its own. The app stays usable between phases.
 
 ---
 
-## 5. Decisions needed
-1. ~~Romulus colors~~: sampled from the logo (§1).
-2. Rename **Directories → Lists**? (Recommended.)
-3. Keep **categories** as a separate "one per person" concept alongside tags? (Recommended: yes, shown as the avatar color. The alternative is folding them into a tag group.)
-4. Tag color: **inherit from the tag group, with optional per-tag override**? (Recommended.)
-5. **Dark mode** in phase 2?
-6. OK to hide the checkboxes until **Select** is tapped?
-7. Which branch does Hostinger serve?
+## 5. Decisions
+Answered 2026-11-23: **go with the recommendations** (Lists rename, keep categories, tag color from group, dark mode in phase 2, Select mode). Hostinger serves **`main`**.
+
+### Hostinger and `main`: action needed
+Hostinger's Git deploy copies the repo as-is. Since `cc360a8` removed the legacy app, the repo root has **no `index.html`**, and the React app exists only as source in `app/`. The next Hostinger deploy of `main` will serve a blank site. Options:
+- **A (recommended):** A GitHub Action builds `app/` on every push to `main` and publishes `app/dist/` to the `deploy` branch. Hostinger's Git setting switches from `main` to `deploy` (one change in hPanel → Advanced → Git). This **replaces** what's on `deploy` now (an old Canopy Clients build). Needs owner approval.
+- **B:** Commit the built files into the repo root on `main`. No Hostinger change, but every app change also needs a rebuild commit, and the history fills with generated files.
+
+`app/public/.htaccess` (HTTPS redirect, caching) is added, so either option ships with the right server settings.
+
+---
+
+## 6. Connecting to Canopy Estimate
+
+**Goal:** from a contact in Contact Sheet, see that person's **completed jobs**, with a **copy of the estimate and the invoice** for each.
+
+### What Canopy Estimate has today (`bkubont/canopy-estimate`, `0043d00`)
+- Supabase backend with organizations and members (roles: owner / office / crew).
+- `customers` (plus `customer_phones`, `customer_emails`, `customer_properties`), `jobs` (stage `estimate → work_order → invoice → paid`, status `… → done`), `invoices`, `payments`.
+- Row-level security: **invoices are readable only by owner/office**. Crew can see jobs but not prices.
+- **Estimate and invoice PDFs are not stored.** They're drawn in the browser from React components (`EstimateDoc`, `InvoiceDoc`) each time someone opens them. Customer-facing pages use share tokens.
+- It already has its own CRM screens (contacts, tag groups, smart lists). Contact Sheet's `Contacts.md` describes the split: personal contacts here, company customers there.
+
+### Recommended design: Canopy is the record, Contact Sheet reads it
+Canopy stays the only place jobs, estimates and invoices are created or changed. Contact Sheet **links** a personal contact to a Canopy customer and **reads** their history. Personal contacts are never uploaded to Canopy.
+
+**1. Frozen document copies (Canopy change).** When an estimate is **signed**, a change order is signed, or an invoice is **sent** (and again when **paid**), Canopy renders the PDF and saves it:
+```sql
+create table public.documents (
+  id uuid primary key,
+  org_id uuid not null references organizations,
+  job_id uuid not null references jobs,
+  customer_id uuid references customers,
+  kind text check (kind in ('estimate','change_order','invoice','receipt')),
+  number text, total numeric(12,2),
+  path text not null,            -- private storage bucket "documents"
+  created_at timestamptz default now(), created_by uuid
+);  -- insert-only: copies are never edited
+```
+RLS: owner/office read, same as invoices. These are true copies: they show exactly what the customer signed or received, even if prices or the template change later. That's useful inside Canopy as a record too.
+
+**2. One read call (Canopy change).** An RPC `customer_history(p_customer uuid)` returns the customer's completed jobs (status `done` or stage `invoice`/`paid`): job number, work date, property, total, paid/balance, and the related document rows. One call keeps Contact Sheet from depending on Canopy's internal table layout.
+
+**3. Contact Sheet side.**
+- **Settings → Connections → Canopy Estimate**: sign in with the Canopy account (owner or office role). If Contact Sheet's sync uses the same Supabase project, this is the same sign-in.
+- **Link a contact**: on a contact, "Link to Canopy customer" suggests matches by phone or email and asks to confirm. Only the Canopy customer ID is stored on the contact (`contact.canopy = { orgId, customerId }`). It syncs like any other field.
+- **Contact detail** gets a **Work history** section: each completed job with date, job number, property, total and Paid/Balance badge, plus **Estimate** and **Invoice** buttons that open the stored PDF.
+- PDFs are fetched by short-lived signed URL and **cached on the device** (IndexedDB) so they open offline. "Remove downloaded copies" in Settings.
+- A filter chip "Canopy customers" shows linked contacts.
+- Job details never go into Contact Sheet's own cloud sync and never appear in Contact Sheet's directory PDFs.
+
+### Considered and not recommended
+- **Link to Canopy's customer-facing share pages.** Cheap, but those pages are meant for customers, they show live data rather than a copy, and anyone holding the link can open them.
+- **Copy jobs and invoices into Contact Sheet's database.** Two copies of business records drift apart, and personal and business data get mixed in one store.
+- **Merge Contact Sheet into Canopy.** Canopy already has a CRM, but it's shared with the team, and personal contacts (family, church) don't belong there.
+
+### Work and order
+| Step | Repo | Size |
+|---|---|---|
+| C1. `documents` table, private bucket, RLS, tests | canopy-estimate | S |
+| C2. Save PDF copies on estimate signed / change order signed / invoice sent / paid, plus a one-time backfill for existing signed estimates and sent invoices | canopy-estimate | M |
+| C3. `customer_history` RPC, tests | canopy-estimate | S |
+| C4. Canopy connection in Settings, linking flow, match suggestions | contact-sheet | M |
+| C5. Contact detail screen with Work history, PDF cache | contact-sheet | M |
+
+This fits after phase 4 (navigation), because it needs the Settings screen and a contact detail screen. C1–C3 can be built in Canopy at any time.
+
+### Questions
+1. Does Contact Sheet's sync use the **same Supabase project** as Canopy Estimate? (Same project means one sign-in; different projects means two, which also works.)
+2. Who will use the connection: only you (owner), or office staff too? Crew can't see invoices under Canopy's current rules.
+3. "Completed" means status **Done**, or only once the invoice is **paid**? (Recommended: Done, with a Paid/Balance badge.)
+4. OK to make changes in the `canopy-estimate` repo (C1–C3)? This session can read it but needs push access to change it.

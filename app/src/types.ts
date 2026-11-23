@@ -94,7 +94,7 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
 ];
 
 export const DEFAULT_TAG_GROUPS: TagGroup[] = [
-  { id: 'tg-relationship', name: 'Relationship', tags: ['Family', 'Friend', 'Spouse', 'Partner', 'Neighbor'] },
+  { id: 'tg-relationship', name: 'Relationship', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
   { id: 'tg-role', name: 'Role', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
   { id: 'tg-circle', name: 'Circle', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
 ];
