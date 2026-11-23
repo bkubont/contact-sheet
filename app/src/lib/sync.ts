@@ -1,6 +1,7 @@
 import { createClient, type Session, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { APP_CONFIG, syncConfigured } from './config';
 import { DIRS_SYNC_ID, Store } from './store';
+import type { Directory } from '../types';
 
 const TABLE = 'contacts';
 const PAGE = 1000;
@@ -22,6 +23,8 @@ let syncing = false;
 let again = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 let started = false;
+/** When true, Store.emit from applyRemote must not schedule another sync. */
+let applyingRemote = false;
 
 function setStatus(state: SyncStatus['state'], message = '') {
   status = { state, message, at: Date.now() };
@@ -86,22 +89,27 @@ async function pull() {
       const last = data[data.length - 1].updated_at as string;
       newest = last > (newest || '') ? last : newest;
     }
-    changed += Store.applyRemote(data, newest);
+    applyingRemote = true;
+    try {
+      changed += Store.applyRemote(data, newest);
+    } finally {
+      applyingRemote = false;
+    }
     if (data.length < PAGE) break;
     from += PAGE;
   }
   return changed;
 }
 
-async function syncNow() {
-  if (!syncConfigured || !session) return;
+async function syncNow(): Promise<{ ok: boolean; error?: string }> {
+  if (!syncConfigured || !session) return { ok: true };
   if (syncing) {
     again = true;
-    return;
+    return { ok: true };
   }
   if (!navigator.onLine) {
     setStatus('offline', 'Offline — changes will sync when you reconnect');
-    return;
+    return { ok: false, error: 'Offline — changes will sync when you reconnect' };
   }
   syncing = true;
   setStatus('syncing');
@@ -112,15 +120,19 @@ async function syncNow() {
       await pull();
     } while (again);
     setStatus('synced');
+    return { ok: true };
   } catch (err) {
     console.error('Sync failed', err);
-    setStatus('error', (err as Error).message || String(err));
+    const message = (err as Error).message || String(err);
+    setStatus('error', message);
+    return { ok: false, error: message };
   } finally {
     syncing = false;
   }
 }
 
 function scheduleSync(delay = 1200) {
+  if (applyingRemote) return;
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(() => {
     void syncNow();
@@ -142,7 +154,20 @@ async function adoptSession(s: Session | null) {
       const keep = confirm(
         `Add the data on this device (${Store.all().length} contact${Store.all().length === 1 ? '' : 's'}, ${Store.directories().length} director${Store.directories().length === 1 ? 'y' : 'ies'}) to your account (${s.user.email})?\n\nChoose Cancel to remove it from this device and only use what’s saved in your account.`,
       );
-      Store.resetForOwner(s.user.id, { keepContacts: keep });
+      if (keep) {
+        const localDirs: Directory[] = Store.directories().map((d) => ({ ...d }));
+        // Keep contacts queued for upload, but do NOT upload directories until we merge with the account.
+        Store.resetForOwner(s.user.id, { keepContacts: true, queueDirectories: false });
+        applyingRemote = true;
+        try {
+          await pull();
+        } finally {
+          applyingRemote = false;
+        }
+        Store.mergeDirectories(localDirs);
+      } else {
+        Store.resetForOwner(s.user.id);
+      }
     } else {
       Store.resetForOwner(s.user.id);
     }
@@ -180,7 +205,9 @@ export function startSync() {
     }, 0);
   });
 
-  Store.subscribe(() => scheduleSync());
+  Store.subscribe(() => {
+    if (!applyingRemote) scheduleSync();
+  });
   window.addEventListener('online', () => scheduleSync(200));
   window.addEventListener('offline', () => {
     if (session) setStatus('offline', 'Offline — changes will sync when you reconnect');
@@ -235,13 +262,27 @@ export const Sync = {
     const { error } = await client.auth.updateUser({ password });
     return { error: friendly(error) };
   },
-  async signOut() {
-    if (!client) return;
-    await syncNow();
+  async signOut(): Promise<{ error?: string }> {
+    if (!client) return {};
+    if (!navigator.onLine) {
+      return {
+        error:
+          'You’re offline. Stay signed in until you’re online so pending edits can upload — otherwise they may be lost from this device.',
+      };
+    }
+    const result = await syncNow();
+    if (!result.ok || Store.hasPending()) {
+      return {
+        error:
+          result.error ||
+          'Could not upload all changes. Tap Sync now, then try signing out again.',
+      };
+    }
     await client.auth.signOut();
     session = null;
     Store.resetForOwner(null);
     setStatus('signed-out');
+    return {};
   },
   async deleteAccount() {
     if (!client) return { error: 'Accounts are not configured.' };

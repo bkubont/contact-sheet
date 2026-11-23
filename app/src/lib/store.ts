@@ -434,19 +434,21 @@ export const Store = {
     let changed = 0;
     let contacts = [...db.contacts];
     let directories = db.directories;
-    let dirsTouched = false;
 
     for (const r of rows) {
       if (meta.pending[r.id]) continue;
       if (r.id === DIRS_SYNC_ID) {
         if (r.deleted) {
-          directories = [];
-          dirsTouched = true;
-          changed++;
+          if (directories.length) {
+            directories = [];
+            changed++;
+          }
         } else if (Array.isArray(r.data?.directories)) {
-          directories = r.data.directories as Directory[];
-          dirsTouched = true;
-          changed++;
+          const incoming = r.data.directories as Directory[];
+          if (JSON.stringify(incoming) !== JSON.stringify(directories)) {
+            directories = incoming;
+            changed++;
+          }
         }
         continue;
       }
@@ -462,8 +464,16 @@ export const Store = {
           created: (r.data.created as number) || Date.now(),
           updated: (r.data.updated as number) || Date.now(),
         };
-        if (i >= 0) contacts[i] = c;
-        else contacts.push(c);
+        if (i >= 0) {
+          const prev = contacts[i];
+          if (
+            prev.updated === c.updated &&
+            JSON.stringify({ ...prev, updated: 0 }) === JSON.stringify({ ...c, updated: 0 })
+          ) {
+            continue;
+          }
+          contacts[i] = c;
+        } else contacts.push(c);
         changed++;
       }
     }
@@ -477,19 +487,42 @@ export const Store = {
     } else if (cursor) {
       persistMeta();
     }
-    void dirsTouched;
     return changed;
   },
-  resetForOwner(owner: string | null, { keepContacts = false }: { keepContacts?: boolean } = {}) {
+  resetForOwner(
+    owner: string | null,
+    { keepContacts = false, queueDirectories = true }: { keepContacts?: boolean; queueDirectories?: boolean } = {},
+  ) {
     if (!keepContacts) db = emptyDb();
     meta = { owner, pending: {}, cursor: null };
     if (keepContacts) {
       const now = Date.now();
       for (const c of db.contacts) meta.pending[c.id] = now;
-      meta.pending[DIRS_SYNC_ID] = now;
+      if (queueDirectories) meta.pending[DIRS_SYNC_ID] = now;
     }
     persistDb(db);
     persistMeta();
     emit();
+  },
+  /** Merge local directories into current set by id (prefer newer `updated`). Queues dirs for upload. */
+  mergeDirectories(local: Directory[]) {
+    const byId = new Map(db.directories.map((d) => [d.id, d]));
+    for (const d of local) {
+      const existing = byId.get(d.id);
+      if (!existing || (d.updated || 0) >= (existing.updated || 0)) byId.set(d.id, d);
+    }
+    // Also keep unique names from local that don't clash with cloud ids
+    db = { ...db, directories: [...byId.values()] };
+    meta.pending[DIRS_SYNC_ID] = Date.now();
+    persistDb(db);
+    persistMeta();
+    emit();
+  },
+  hasPending() {
+    return Object.keys(meta.pending).length > 0;
+  },
+  clearPending(id: string) {
+    delete meta.pending[id];
+    persistMeta();
   },
 };

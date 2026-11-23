@@ -180,7 +180,11 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                     )
                   )
                     return;
-                  await Sync.signOut();
+                  const r = await Sync.signOut();
+                  if (r.error) {
+                    alert(r.error);
+                    return;
+                  }
                   toast('Signed out');
                   onClose();
                 }}
