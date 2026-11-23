@@ -198,20 +198,20 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
               onClick={async () => {
                 if (
                   !confirm(
-                    `Permanently delete the account ${user.email} and every contact saved in it? This cannot be undone.`,
+                    `Permanently delete every contact and directory saved for ${user.email} in the cloud, and sign out? Your login stays, because it is shared with Canopy Estimate. This cannot be undone.`,
                   )
                 )
                   return;
-                if (!confirm('Really delete your account forever?')) return;
-                const r = await Sync.deleteAccount();
-                if (r.error) alert('Could not delete the account.\n\n' + r.error);
+                if (!confirm('Really erase your Contact Sheet data from the cloud?')) return;
+                const r = await Sync.deleteCloudData();
+                if (r.error) alert('Could not delete your data.\n\n' + r.error);
                 else {
-                  toast('Your account has been deleted');
+                  toast('Your Contact Sheet data has been deleted');
                   onClose();
                 }
               }}
             >
-              Delete my account
+              Delete my Contact Sheet data
             </button>
           </>
         )}

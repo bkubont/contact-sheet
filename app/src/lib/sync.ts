@@ -299,9 +299,10 @@ export const Sync = {
     setStatus('signed-out');
     return {};
   },
-  async deleteAccount() {
+  /** Erases this person's Contact Sheet data in the cloud. The login stays (it is shared with Canopy Estimate). */
+  async deleteCloudData() {
     if (!client) return { error: 'Accounts are not configured.' };
-    const { error } = await client.rpc('delete_my_account');
+    const { error } = await client.rpc('delete_my_contact_sheet_data');
     if (error) return { error: friendly(error) };
     await client.auth.signOut().catch(() => {});
     session = null;
