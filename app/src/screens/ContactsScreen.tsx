@@ -7,6 +7,7 @@ import { PdfSheet } from '../components/PdfSheet';
 import { Sheet } from '../components/Sheet';
 import { downloadBlob, toast } from '../lib/util';
 import { toVCard } from '../lib/importers';
+import { ColorPill, Dot } from '../components/Color';
 
 const UNTAGGED = '__untagged__';
 const UNCAT = '__uncategorized__';
@@ -258,6 +259,7 @@ export function ContactsScreen({
             </svg>
             {syncDot && <span className={`sync-dot ${syncDot === 'ok' ? '' : syncDot}`} />}
           </button>
+          <span className="logo-tile" aria-hidden="true" />
           <h1 className="brand">
             Contact Sheet
             <span>{db.contacts.length || ''}</span>
@@ -297,8 +299,8 @@ export function ContactsScreen({
                   return (
                     <button
                       key={cat.id}
-                      className={`chip cat${categoryFilter === cat.id ? ' on' : ''}`}
-                      style={{ ['--cat-color' as string]: cat.color }}
+                      className={`chip${categoryFilter === cat.id ? ' on' : ''}`}
+                      data-color={cat.color}
                       onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
                     >
                       {cat.name}
@@ -327,6 +329,7 @@ export function ContactsScreen({
                   <button
                     key={t}
                     className={`chip${tag === t ? ' on' : ''}`}
+                    data-color={Store.tagColor(t)}
                     onClick={() => setTag(tag === t ? null : t)}
                   >
                     {t}
@@ -372,23 +375,18 @@ export function ContactsScreen({
           {grouped.map(([letter, people]) => (
             <section key={letter}>
               <div className="letter">{letter}</div>
-              {people.map((c, i) => {
+              {people.map((c) => {
                 const sel = selected.has(c.id);
                 const catName = c.category ? Store.categoryName(c.category) : '';
                 const catColor = c.category ? Store.categoryColor(c.category) : undefined;
                 const meta =
-                  [catName, c.title, c.company].filter(Boolean).join(' · ') ||
-                  c.phones[0]?.value ||
-                  c.emails[0]?.value ||
-                  '';
+                  [c.title, c.company].filter(Boolean).join(' · ') ||
+                  (catName ? '' : c.phones[0]?.value || c.emails[0]?.value || '');
                 return (
                   <div
                     key={c.id}
                     className={`row${sel ? ' sel' : ''}`}
-                    style={{
-                      animationDelay: `${Math.min(i, 12) * 20}ms`,
-                      ['--row-accent' as string]: catColor || 'var(--accent)',
-                    }}
+                    data-color={catColor}
                   >
                     <button
                       type="button"
@@ -405,18 +403,24 @@ export function ContactsScreen({
                     </button>
                     <button type="button" className="row-main" style={{ border: 0, background: 'transparent', textAlign: 'left', padding: 0 }} onClick={() => setEditing(c)}>
                       <div className="row-name">{displayName(c)}</div>
-                      {meta && <div className="row-meta">{meta}</div>}
-                      {(!!c.tags.length || catName) && (
-                        <div className="pills">
+                      {(catName || meta) && (
+                        <div className="row-meta">
                           {catName && (
-                            <span className="pill gold" style={{ background: `${catColor}22`, color: catColor }}>
+                            <span className="cat-line">
+                              <Dot color={catColor!} />
                               {catName}
                             </span>
                           )}
+                          {catName && meta ? ' · ' : ''}
+                          {meta}
+                        </div>
+                      )}
+                      {!!c.tags.length && (
+                        <div className="pills">
                           {c.tags.map((t) => (
-                            <span key={t} className="pill">
+                            <ColorPill key={t} color={Store.tagColor(t)}>
                               {t}
-                            </span>
+                            </ColorPill>
                           ))}
                         </div>
                       )}

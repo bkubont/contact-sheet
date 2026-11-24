@@ -1,5 +1,5 @@
 /* Contact Sheet offline support: cache-first for same-origin GETs, refresh in background. */
-const CACHE = 'contact-sheet-react-v1';
+const CACHE = 'contact-sheet-react-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

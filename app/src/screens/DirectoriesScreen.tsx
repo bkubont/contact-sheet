@@ -5,6 +5,7 @@ import { useDb } from '../hooks/useStore';
 import { PdfSheet } from '../components/PdfSheet';
 import { Sheet } from '../components/Sheet';
 import { toast } from '../lib/util';
+import { ColorPill } from '../components/Color';
 
 function newId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -118,9 +119,9 @@ export function DirectoriesScreen() {
         <legend>Tags</legend>
         <div className="pills">
           {smartTags.map((t) => (
-            <button key={t} type="button" className="pill x" onClick={() => setSmartTags(smartTags.filter((x) => x !== t))}>
-              {t}
-            </button>
+            <ColorPill key={t} color={Store.tagColor(t)} onClick={() => setSmartTags(smartTags.filter((x) => x !== t))} title={`Remove ${t}`}>
+              {t} ×
+            </ColorPill>
           ))}
         </div>
         <input
@@ -226,9 +227,9 @@ export function DirectoriesScreen() {
                     {!!c.tags.length && (
                       <div className="pills">
                         {c.tags.map((t) => (
-                          <span key={t} className="pill">
+                          <ColorPill key={t} color={Store.tagColor(t)}>
                             {t}
-                          </span>
+                          </ColorPill>
                         ))}
                       </div>
                     )}
@@ -291,7 +292,7 @@ export function DirectoriesScreen() {
     <>
       <header className="topbar">
         <div className="topbar-row">
-          <div style={{ width: 42 }} />
+          <span className="logo-tile" aria-hidden="true" />
           <h1 className="brand">
             Directories
             <span>{db.directories.length || ''}</span>
@@ -333,8 +334,16 @@ export function DirectoriesScreen() {
                   <h3>{d.name}</h3>
                   <div className="meta">
                     {n} contact{n === 1 ? '' : 's'}
-                    {d.mode === 'smart' && d.tags.length ? ` · ${d.tags.join(', ')}` : ''}
                   </div>
+                  {d.mode === 'smart' && !!d.tags.length && (
+                    <div className="pills">
+                      {d.tags.map((t) => (
+                        <ColorPill key={t} color={Store.tagColor(t)}>
+                          {t}
+                        </ColorPill>
+                      ))}
+                    </div>
+                  )}
                 </button>
               );
             })}

@@ -9,6 +9,7 @@ import { Sheet } from './Sheet';
 import { AccountSheet } from './AccountSheet';
 import { GroupsSheet } from './GroupsSheet';
 import { CanopySheet } from './CanopySheet';
+import { APPEARANCE_LABEL, getAppearance, setAppearance, type Appearance } from '../lib/theme';
 
 export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const db = useDb();
@@ -21,6 +22,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [tagsOpen, setTagsOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [canopyOpen, setCanopyOpen] = useState(false);
+  const [appearance, setAppearanceState] = useState<Appearance>(getAppearance);
   const [accountOpen, setAccountOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreText, setRestoreText] = useState('');
@@ -173,6 +175,17 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
               Canopy Estimate (work history)
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              const order: Appearance[] = ['system', 'light', 'dark'];
+              const next = order[(order.indexOf(appearance) + 1) % order.length];
+              setAppearance(next);
+              setAppearanceState(next);
+            }}
+          >
+            Appearance: {APPEARANCE_LABEL[appearance]}
+          </button>
           <div className="sep" />
           <button type="button" style={{ color: 'var(--danger)' }} onClick={wipe}>
             Delete all data

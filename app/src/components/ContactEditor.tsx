@@ -169,12 +169,13 @@ export function ContactEditor({
     onClose();
   }
 
-  const suggestions = Store.tagCounts()
-    .map(([t]) => t)
-    .filter((t) => !tags.includes(t) && (!tagInput || t.toLowerCase().includes(tagInput.toLowerCase())))
-    .slice(0, 12);
-
   const groupedTagNames = new Set(db.tagGroups.flatMap((g) => g.tags));
+  // Tags used on other contacts that aren't in a group, most used first.
+  const suggestions = Store.tagCounts()
+    .sort((a, b) => b[1] - a[1])
+    .map(([t]) => t)
+    .filter((t) => !groupedTagNames.has(t) && !tags.includes(t) && (!tagInput || t.toLowerCase().includes(tagInput.toLowerCase())))
+    .slice(0, 12);
 
   return (
     <Sheet
@@ -208,17 +209,24 @@ export function ContactEditor({
         </label>
       </div>
 
-      <label>
-        Category
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">— None —</option>
+      <fieldset>
+        <legend>Category</legend>
+        <div className="choice-chips" role="radiogroup" aria-label="Category">
           {db.categories.map((c) => (
-            <option key={c.id} value={c.id}>
+            <button
+              key={c.id}
+              type="button"
+              role="radio"
+              aria-checked={category === c.id}
+              data-color={c.color}
+              className={category === c.id ? 'on' : undefined}
+              onClick={() => setCategory(category === c.id ? '' : c.id)}
+            >
               {c.name}
-            </option>
+            </button>
           ))}
-        </select>
-      </label>
+        </div>
+      </fieldset>
 
       {contact && <WorkHistory contact={contact} />}
 
@@ -240,40 +248,47 @@ export function ContactEditor({
 
       <fieldset>
         <legend>Tags</legend>
-        <div className="pills">
-          {tags.map((t) => (
-            <button key={t} type="button" className="pill x" onClick={() => setTags(tags.filter((x) => x !== t))}>
-              {t}
-            </button>
-          ))}
-        </div>
         {db.tagGroups.map((g) =>
           g.tags.length ? (
-            <div key={g.id} className="tag-group-block" style={{ marginTop: 8 }}>
+            <div key={g.id} className="tag-group-block">
               <h4>{g.name}</h4>
-              <div className="suggest">
+              <div className="choice-chips">
                 {g.tags.map((t) => (
                   <button
                     key={t}
                     type="button"
-                    className={tags.includes(t) ? 'pill gold' : undefined}
-                    style={
-                      tags.includes(t)
-                        ? undefined
-                        : { border: '1px dashed var(--line)', borderRadius: 4, padding: '4px 10px' }
-                    }
+                    aria-pressed={tags.includes(t)}
+                    data-color={g.color}
+                    className={tags.includes(t) ? 'on' : undefined}
                     onClick={() => toggleGroupTag(t)}
                   >
-                    {tags.includes(t) ? t : `+ ${t}`}
+                    {t}
                   </button>
                 ))}
               </div>
             </div>
           ) : null,
         )}
+        <div className="tag-group-block">
+          <h4>Other tags</h4>
+          <div className="choice-chips">
+            {[...new Set([...tags.filter((t) => !groupedTagNames.has(t)), ...suggestions.filter((t) => !groupedTagNames.has(t))])].map((t) => (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={tags.includes(t)}
+                data-color={Store.tagColor(t)}
+                className={tags.includes(t) ? 'on' : undefined}
+                onClick={() => toggleGroupTag(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
         <input
           value={tagInput}
-          placeholder="Add custom tag and press Enter"
+          placeholder="Add a new tag and press Enter"
           enterKeyHint="done"
           onChange={(e) => setTagInput(e.target.value)}
           onKeyDown={(e) => {
@@ -287,15 +302,6 @@ export function ContactEditor({
             if (tagInput.trim()) addTag(tagInput);
           }}
         />
-        <div className="suggest">
-          {suggestions
-            .filter((t) => !groupedTagNames.has(t))
-            .map((t) => (
-              <button key={t} type="button" onClick={() => addTag(t)}>
-                + {t}
-              </button>
-            ))}
-        </div>
       </fieldset>
 
       <label>

@@ -149,7 +149,7 @@ export async function makePdf(contacts: Contact[], o: PdfOptions): Promise<Blob>
     doc.setFillColor(...COLORS.accent);
     doc.rect(0, 0, W, H * 0.38, 'F');
     doc.setFillColor(...COLORS.gold);
-    doc.rect(0, H * 0.38 - 6, W, 6, 'F');
+    doc.rect(0, H * 0.38 - 2.5, W, 2.5, 'F');
     set(11, 'normal', [255, 255, 255]);
     doc.text('CONTACT SHEET', M, H * 0.14);
     set(32, 'bold', [255, 255, 255]);

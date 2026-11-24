@@ -1,3 +1,5 @@
+import type { ColorKey } from './lib/palette';
+
 export interface LabeledValue {
   label: string;
   value: string;
@@ -7,8 +9,8 @@ export interface LabeledValue {
 export interface CategoryDef {
   id: string;
   name: string;
-  /** Hex accent for chips / PDF accents */
-  color: string;
+  /** Color from the shared set (lib/palette.ts). Older saves used a hex value; it's converted on load. */
+  color: ColorKey;
 }
 
 /** Named group of related tags (contacts can pick tags from many groups). */
@@ -16,6 +18,8 @@ export interface TagGroup {
   id: string;
   name: string;
   tags: string[];
+  /** Tags in this group take this color. */
+  color: ColorKey;
 }
 
 /** Link from a personal contact to a customer in Canopy Estimate (same Supabase project). */
@@ -96,17 +100,17 @@ export interface Db {
 }
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { id: 'cat-family', name: 'Family', color: '#B45309' },
-  { id: 'cat-work', name: 'Work', color: '#1E3A8A' },
-  { id: 'cat-friends', name: 'Friends', color: '#D97706' },
-  { id: 'cat-community', name: 'Community', color: '#1D4ED8' },
-  { id: 'cat-other', name: 'Other', color: '#64748B' },
+  { id: 'cat-family', name: 'Family', color: 'terracotta' },
+  { id: 'cat-work', name: 'Work', color: 'denim' },
+  { id: 'cat-friends', name: 'Friends', color: 'teal' },
+  { id: 'cat-community', name: 'Community', color: 'plum' },
+  { id: 'cat-other', name: 'Other', color: 'stone' },
 ];
 
 export const DEFAULT_TAG_GROUPS: TagGroup[] = [
-  { id: 'tg-relationship', name: 'Relationship', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
-  { id: 'tg-role', name: 'Role', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
-  { id: 'tg-circle', name: 'Circle', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
+  { id: 'tg-relationship', name: 'Relationship', color: 'rose', tags: ['Spouse', 'Partner', 'Child', 'Parent', 'Sibling', 'Friend', 'Neighbor'] },
+  { id: 'tg-role', name: 'Role', color: 'sage', tags: ['Board', 'Volunteer', 'Client', 'Colleague', 'Vendor'] },
+  { id: 'tg-circle', name: 'Circle', color: 'lavender', tags: ['School', 'Church', 'Club', 'Sports', 'Travel'] },
 ];
 
 export const DEFAULT_PDF: PdfOptions = {
@@ -132,8 +136,10 @@ export const DEFAULT_PDF: PdfOptions = {
 };
 
 export const PDF_THEMES: Record<PdfTheme, { label: string; accent: [number, number, number]; soft: [number, number, number]; gold: [number, number, number] }> = {
-  royal: { label: 'Royal blue', accent: [30, 58, 138], soft: [219, 234, 254], gold: [217, 119, 6] },
-  gold: { label: 'Gold', accent: [180, 83, 9], soft: [254, 243, 199], gold: [245, 158, 11] },
-  navy: { label: 'Deep navy', accent: [15, 23, 42], soft: [226, 232, 240], gold: [212, 175, 55] },
-  charcoal: { label: 'Charcoal', accent: [51, 65, 85], soft: [241, 245, 249], gold: [217, 119, 6] },
+  // Romulus royal blue with a thin gold rule (default)
+  royal: { label: 'Royal blue', accent: [15, 42, 122], soft: [232, 237, 249], gold: [201, 150, 46] },
+  // Antique gold headings for a warmer sheet (kept as "gold" so saved choices still work)
+  gold: { label: 'Antique gold', accent: [138, 100, 24], soft: [251, 243, 224], gold: [201, 150, 46] },
+  navy: { label: 'Midnight', accent: [7, 14, 36], soft: [230, 235, 247], gold: [212, 165, 58] },
+  charcoal: { label: 'Charcoal', accent: [51, 56, 66], soft: [241, 242, 244], gold: [201, 150, 46] },
 };

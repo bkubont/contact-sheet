@@ -1,6 +1,7 @@
 import type { CanopyLink, CategoryDef, Contact, Db, Directory, LabeledValue, TagGroup } from '../types';
 import { DEFAULT_CATEGORIES, DEFAULT_TAG_GROUPS } from '../types';
 import { uid } from './util';
+import { colorForName, isColorKey, nearestColor, PALETTE_KEYS, type ColorKey } from './palette';
 
 const DB_KEY = 'contactSheet.db.v2';
 const LEGACY_CONTACTS = 'contactSheet.contacts.v1';
@@ -89,15 +90,19 @@ function normalizeCategory(c: Partial<CategoryDef> & { id?: string; name?: strin
   return {
     id: c.id || uid(),
     name: clean(c.name) || 'Untitled',
-    color: clean(c.color) || '#1E3A8A',
+    color: nearestColor(clean(c.color), 'stone'),
   };
 }
 
-function normalizeTagGroup(g: Partial<TagGroup> & { id?: string; name?: string }): TagGroup {
+/** Colors handed to tag groups that don't have one yet (older saves), in order. */
+const GROUP_COLORS: ColorKey[] = ['rose', 'sage', 'lavender', 'teal', 'sand', 'denim', 'olive', 'plum', 'terracotta', 'stone'];
+
+function normalizeTagGroup(g: Partial<TagGroup> & { id?: string; name?: string }, index = 0): TagGroup {
   return {
     id: g.id || uid(),
     name: clean(g.name) || 'Untitled',
     tags: [...new Set((g.tags || []).map(clean).filter(Boolean))],
+    color: isColorKey(g.color) ? g.color : GROUP_COLORS[index % GROUP_COLORS.length],
   };
 }
 
@@ -107,7 +112,7 @@ function resolveCategories(raw: Record<string, unknown>): CategoryDef[] {
     return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
   }
   if (!Array.isArray(raw.categories)) return DEFAULT_CATEGORIES.map((c) => ({ ...c }));
-  return (raw.categories as CategoryDef[]).map(normalizeCategory);
+  return (raw.categories as CategoryDef[]).map((c) => normalizeCategory(c));
 }
 
 function resolveTagGroups(raw: Record<string, unknown>): TagGroup[] {
@@ -117,7 +122,7 @@ function resolveTagGroups(raw: Record<string, unknown>): TagGroup[] {
   if (!Array.isArray(raw.tagGroups)) {
     return DEFAULT_TAG_GROUPS.map((g) => ({ ...g, tags: [...g.tags] }));
   }
-  return (raw.tagGroups as TagGroup[]).map(normalizeTagGroup);
+  return (raw.tagGroups as TagGroup[]).map((g, i) => normalizeTagGroup(g, i));
 }
 
 function migrateToV3(raw: Record<string, unknown>): Db {
@@ -281,8 +286,18 @@ export const Store = {
   categoryName(id: string): string {
     return db.categories.find((c) => c.id === id)?.name || '';
   },
-  categoryColor(id: string): string {
-    return db.categories.find((c) => c.id === id)?.color || '#1E3A8A';
+  categoryColor(id: string): ColorKey {
+    return db.categories.find((c) => c.id === id)?.color || 'stone';
+  },
+  /** A tag's color: its group's color, or a steady color from its name when it's in no group. */
+  tagColor(tag: string): ColorKey {
+    const t = tag.trim().toLowerCase();
+    const g = db.tagGroups.find((x) => x.tags.some((y) => y.toLowerCase() === t));
+    return g ? g.color : colorForName(tag);
+  },
+  /** The next color for a new category or group: the first one not in use yet. */
+  nextColor(used: ColorKey[]): ColorKey {
+    return PALETTE_KEYS.find((k) => !used.includes(k)) || PALETTE_KEYS[used.length % PALETTE_KEYS.length];
   },
   upsert(c: Partial<Contact> & { id?: string }): Contact {
     const n = normalizeContact(c);
@@ -626,14 +641,14 @@ export const Store = {
             }
           }
           if (Array.isArray(r.data?.categories)) {
-            const incoming = (r.data.categories as CategoryDef[]).map(normalizeCategory);
+            const incoming = (r.data.categories as CategoryDef[]).map((c) => normalizeCategory(c));
             if (JSON.stringify(incoming) !== JSON.stringify(categories)) {
               categories = incoming;
               changed++;
             }
           }
           if (Array.isArray(r.data?.tagGroups)) {
-            const incoming = (r.data.tagGroups as TagGroup[]).map(normalizeTagGroup);
+            const incoming = (r.data.tagGroups as TagGroup[]).map((g, i) => normalizeTagGroup(g, i));
             if (JSON.stringify(incoming) !== JSON.stringify(tagGroups)) {
               tagGroups = incoming;
               changed++;
@@ -724,6 +739,7 @@ export const Store = {
             id: g.id,
             name: g.name || existing.name,
             tags: [...new Set([...existing.tags, ...g.tags])],
+            color: g.color || existing.color,
           }),
         );
       }

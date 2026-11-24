@@ -20,10 +20,10 @@ function loadOpts(): PdfOptions {
 }
 
 const THEME_BG: Record<PdfTheme, string> = {
-  royal: 'linear-gradient(135deg,#1e3a8a,#1d4ed8)',
-  gold: 'linear-gradient(135deg,#b45309,#f59e0b)',
-  navy: 'linear-gradient(135deg,#0f172a,#334155)',
-  charcoal: 'linear-gradient(135deg,#334155,#64748b)',
+  royal: 'linear-gradient(135deg,#0f2a7a,#1e46c0)',
+  gold: 'linear-gradient(135deg,#8a6418,#c9962e)',
+  navy: 'linear-gradient(135deg,#070e24,#1b2e4b)',
+  charcoal: 'linear-gradient(135deg,#333842,#5b6270)',
 };
 
 export function PdfSheet({

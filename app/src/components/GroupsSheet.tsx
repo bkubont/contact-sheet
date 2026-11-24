@@ -4,8 +4,8 @@ import { useDb } from '../hooks/useStore';
 import { toast } from '../lib/util';
 import { Sheet } from './Sheet';
 import type { CategoryDef, TagGroup } from '../types';
-
-const COLOR_PRESETS = ['#1E3A8A', '#1D4ED8', '#D97706', '#B45309', '#F59E0B', '#0F766E', '#7C3AED', '#64748B'];
+import type { ColorKey } from '../lib/palette';
+import { ColorPill, Dot, SwatchPicker } from './Color';
 
 function newId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -23,7 +23,7 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
     Store.upsertCategory({
       id: newId(),
       name: name.trim(),
-      color: COLOR_PRESETS[db.categories.length % COLOR_PRESETS.length],
+      color: Store.nextColor(db.categories.map((c) => c.color)),
     });
     toast('Category added');
   }
@@ -35,14 +35,14 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
     toast('Category renamed');
   }
 
-  function setColor(cat: CategoryDef, color: string) {
+  function setColor(cat: CategoryDef, color: ColorKey) {
     Store.upsertCategory({ ...cat, color });
   }
 
   function addGroup() {
     const name = prompt('Tag group name (e.g. Relationship)');
     if (!name?.trim()) return;
-    Store.upsertTagGroup({ id: newId(), name: name.trim(), tags: [] });
+    Store.upsertTagGroup({ id: newId(), name: name.trim(), tags: [], color: Store.nextColor(db.tagGroups.map((g) => g.color)) });
     toast('Group added');
   }
 
@@ -89,7 +89,8 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
               <div key={cat.id} className="tag-group-block">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                   <div>
-                    <div className="row-name" style={{ color: cat.color }}>
+                    <div className="row-name cat-line">
+                      <Dot color={cat.color} />
                       {cat.name}
                     </div>
                     <div className="row-meta">
@@ -114,23 +115,8 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
                     </button>
                   </div>
                 </div>
-                <div className="suggest" style={{ marginTop: 8 }}>
-                  {COLOR_PRESETS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      aria-label={`Color ${c}`}
-                      onClick={() => setColor(cat, c)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        padding: 0,
-                        borderRadius: 4,
-                        background: c,
-                        border: cat.color === c ? '2px solid #0f172a' : '1px solid transparent',
-                      }}
-                    />
-                  ))}
+                <div style={{ marginTop: 10 }}>
+                  <SwatchPicker label={`Color for ${cat.name}`} value={cat.color} onChange={(c) => setColor(cat, c)} />
                 </div>
               </div>
             );
@@ -147,7 +133,10 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
           {db.tagGroups.map((g) => (
             <div key={g.id} className="tag-group-block">
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                <h4 style={{ margin: 0 }}>{g.name}</h4>
+                <h4 style={{ margin: 0 }} className="cat-line">
+                  <Dot color={g.color} />
+                  {g.name}
+                </h4>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" className="btn" onClick={() => renameGroup(g)}>
                     Rename
@@ -166,11 +155,18 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
                   </button>
                 </div>
               </div>
-              <div className="pills" style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 10 }}>
+                <SwatchPicker
+                  label={`Color for ${g.name}`}
+                  value={g.color}
+                  onChange={(c) => Store.upsertTagGroup({ ...g, color: c })}
+                />
+              </div>
+              <div className="pills" style={{ marginTop: 10 }}>
                 {g.tags.map((t) => (
-                  <button key={t} type="button" className="pill x" onClick={() => removeTagFromGroup(g, t)}>
-                    {t}
-                  </button>
+                  <ColorPill key={t} color={g.color} onClick={() => removeTagFromGroup(g, t)} title={`Remove ${t} from ${g.name}`}>
+                    {t} ×
+                  </ColorPill>
                 ))}
               </div>
               <button type="button" className="link" onClick={() => addTagToGroup(g)}>
@@ -192,9 +188,14 @@ export function GroupsSheet({ open, onClose }: { open: boolean; onClose: () => v
             counts.map(([t, n]) => (
               <div key={t} className="row" style={{ gridTemplateColumns: '1fr auto auto', margin: '0 0 8px' }}>
                 <div>
-                  <div className="row-name">{t}</div>
+                  <div className="row-name cat-line">
+                    <Dot color={Store.tagColor(t)} />
+                    {t}
+                  </div>
                   <div className="row-meta">
                     {n} contact{n === 1 ? '' : 's'}
+                    {' · '}
+                    {db.tagGroups.find((g) => g.tags.includes(t))?.name ?? 'no group (color from its name)'}
                   </div>
                 </div>
                 <button
