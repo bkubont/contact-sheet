@@ -46,15 +46,20 @@ const ICONS: Record<Tab, ReactNode> = {
 const LABELS: Record<Tab, string> = { contacts: 'Contacts', lists: 'Lists', tags: 'Tags', settings: 'Settings' };
 
 export default function App() {
-  const [tab, setTabState] = useState<Tab>(loadTab);
+  const [tab, setTabState] = useState<Tab>(() => (Sync.recoveryPending ? 'settings' : loadTab()));
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(Sync.status);
   const [focusTag, setFocusTag] = useState<{ tag: string; at: number } | null>(null);
 
   useEffect(() => {
     const off = Sync.onStatus(setSyncStatus);
+    // A password-reset link: go to Settings, where the account form asks for the new password.
+    const onRecovery = () => setTab('settings');
+    window.addEventListener('password-recovery', onRecovery);
     return () => {
       off();
+      window.removeEventListener('password-recovery', onRecovery);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function setTab(t: Tab) {

@@ -45,8 +45,14 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
       setMsg('Choose a new password.');
       setOk(true);
     };
-    window.addEventListener('password-recovery', onRecovery);
-    return () => window.removeEventListener('password-recovery', onRecovery);
+    // The link may have opened before this screen was shown.
+    if (Sync.takeRecovery()) onRecovery();
+    const onEvent = () => {
+      Sync.takeRecovery();
+      onRecovery();
+    };
+    window.addEventListener('password-recovery', onEvent);
+    return () => window.removeEventListener('password-recovery', onEvent);
   }, []);
 
   useEffect(() => {
