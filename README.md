@@ -19,7 +19,7 @@ npm run build    # static files → app/dist/
 - **Master list** — add / edit / delete; search; bulk category / tag / delete / export
 - **Categories** — one primary category per contact (folder-like)
 - **Tag groups** — organized tags (e.g. Relationship, Role, Circle) plus free tags
-- **Directories** — editable smart lists (by tags) or saved selections
+- **Lists** — smart lists (by tags) or saved selections
 - **Make PDF** — Royal/Gold themes, portrait/landscape, columns, cover, preview
 - **Import** with preview; **export** `.vcf`; JSON backup / restore
 - **Optional sync** — Supabase (`VITE_SUPABASE_*` when building `app/`)
@@ -27,14 +27,14 @@ npm run build    # static files → app/dist/
 
 ### Typical use
 1. Import contacts → assign a category and tags
-2. Filter → **PDF these**, or select → **Save list** / **Make PDF**
-3. Or open **Directories** → smart list from tags → **Make PDF**
+2. Filter → the PDF button in the header, or **Select** people → **List** / **PDF**
+3. Or open **Lists** → smart list from tags → **Make PDF**
 
 ## Deploy
 Deploy the contents of `app/dist/` to any static host. Hostinger target is in
 [`.hostinger/site.json`](.hostinger/site.json).
 
-On iPad (Edge or Safari): open the URL → **Add to Home Screen** (banner or Menu).
+On iPad (Edge or Safari): open the URL → **Add to Home Screen** (banner, or Settings → Add to Home Screen).
 
 ## Sync schema
 [`supabase/schema.sql`](supabase/schema.sql) — run once in a Supabase project for optional cloud sync.

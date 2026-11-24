@@ -4,6 +4,7 @@ import { Canopy, jobBadge, latestDocs, money, type CanopyDoc, type CanopyJob, ty
 import { Store } from '../lib/store';
 import { Sync } from '../lib/sync';
 import { toast } from '../lib/util';
+import { askConfirm } from '../lib/dialogs';
 import { useDb } from '../hooks/useStore';
 import { Sheet } from './Sheet';
 
@@ -196,9 +197,9 @@ export function WorkHistory({ contact: opened }: { contact: Contact }) {
             <button
               type="button"
               className="link"
-              onClick={() => {
-                if (!confirm(`Unlink ${link.name}? Their jobs stay in Canopy Estimate.`)) return;
-                Store.setCanopy(contact.id, null);
+              onClick={async () => {
+                const ok = await askConfirm({ title: `Unlink ${link.name}?`, message: 'Their jobs stay in Canopy Estimate. You can link them again any time.', confirmLabel: 'Unlink' });
+                if (ok) Store.setCanopy(contact.id, null);
               }}
             >
               Unlink

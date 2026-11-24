@@ -207,7 +207,7 @@ Each phase can ship on its own. The app stays usable between phases.
 | **1. Fixes** | B1, B2, B4, B5, B7, B10 (defaults only) **— done 2026-11-23**; B11 publishing (see §5) | S |
 | **2. Theme** | §1 tokens, cut gold uses, flat surfaces, grouped list, logo icons, dark mode, PDF themes, install banner **— done 2026-11-23** (category colors wait for phase 3's palette) | M |
 | **3. Tag color model** | Palette, migration, group colors, category palette keys **— done 2026-11-23**, with these changes: no data-version bump (new fields load safely on older copies); no per-tag override; tags outside a group get a steady color from their name; colored tags on rows, filter chips, editor, groups sheet and lists also shipped (from phase 5) | M |
-| **4. Navigation** | 4 tabs, Settings, Tags screen, Select mode, selection bar, filter sheet (B3), sheet pattern, Confirm/Prompt sheets (B6, B9), sidebar on tablet | L |
+| **4. Navigation** | 4 tabs, Settings, Tags screen, Select mode, selection bar, filter sheet (B3), sheet pattern, Confirm/Prompt sheets (B6, B9), sidebar on tablet **— done 2026-11-24**, plus tri-state bulk tagging, multi-tag filter with Any/All and "Save as list" (from phase 5). The contact detail pane on desktop is still to do. | L |
 | **5. Tag UI** | Colored avatars and dots, editor chips, tri-state bulk tag, multi-filter, PDF legend | M |
 | **6. Polish** | Accessibility pass, empty states, README/Contacts.md update | S |
 

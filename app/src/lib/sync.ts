@@ -1,6 +1,7 @@
 import { createClient, type Session, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { APP_CONFIG, syncConfigured } from './config';
 import { DIRS_SYNC_ID, Store } from './store';
+import { askConfirm } from './dialogs';
 import type { CategoryDef, Directory, TagGroup } from '../types';
 
 const TABLE = 'contacts';
@@ -157,9 +158,14 @@ async function adoptSession(s: Session | null) {
   if (Store.owner !== s.user.id) {
     const localCount = Store.all().length + Store.directories().length;
     if (Store.owner === null && localCount > 0) {
-      const keep = confirm(
-        `Add the data on this device (${Store.all().length} contact${Store.all().length === 1 ? '' : 's'}, ${Store.directories().length} director${Store.directories().length === 1 ? 'y' : 'ies'}) to your account (${s.user.email})?\n\nChoose Cancel to remove it from this device and only use what’s saved in your account.`,
-      );
+      const nc = Store.all().length;
+      const nd = Store.directories().length;
+      const keep = await askConfirm({
+        title: 'Add this device’s contacts to your account?',
+        message: `This device has ${nc} contact${nc === 1 ? '' : 's'} and ${nd} list${nd === 1 ? '' : 's'}. Add them to ${s.user.email}, or remove them from this device and use only what’s in your account.`,
+        confirmLabel: 'Add to account',
+        cancelLabel: 'Use account only',
+      });
       if (keep) {
         const localDirs: Directory[] = Store.directories().map((d) => ({ ...d }));
         const localCategories: CategoryDef[] = Store.categories().map((c) => ({ ...c }));

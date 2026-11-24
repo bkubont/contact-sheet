@@ -3,6 +3,7 @@ import type { Contact, LabeledValue } from '../types';
 import { Store } from '../lib/store';
 import { useDb } from '../hooks/useStore';
 import { Sheet } from './Sheet';
+import { askConfirm } from '../lib/dialogs';
 import { WorkHistory } from './WorkHistory';
 
 const PHONE_LABELS = ['mobile', 'home', 'work', 'main', 'fax', 'other'];
@@ -162,9 +163,10 @@ export function ContactEditor({
     onClose();
   }
 
-  function remove() {
+  async function remove() {
     if (!contact) return;
-    if (!confirm(`Delete ${Store.displayName(contact)}?`)) return;
+    const ok = await askConfirm({ title: `Delete ${Store.displayName(contact)}?`, message: 'This removes them from every list. It can’t be undone.', confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
     Store.remove(contact.id);
     onClose();
   }
