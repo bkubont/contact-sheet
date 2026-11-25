@@ -5,13 +5,14 @@ import { useDb } from '../hooks/useStore';
 import { PdfSheet } from '../components/PdfSheet';
 import { Sheet } from '../components/Sheet';
 import { toast } from '../lib/util';
+import { askConfirm } from '../lib/dialogs';
 import { ColorPill } from '../components/Color';
 
 function newId() {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function DirectoriesScreen() {
+export function ListsScreen() {
   const db = useDb();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -95,7 +96,7 @@ export function DirectoriesScreen() {
       match: existing.mode === 'smart' ? match : existing.match,
     });
     setEditOpen(false);
-    toast('Directory updated');
+    toast('List updated');
   }
 
   function removeMember(contactId: string) {
@@ -106,11 +107,12 @@ export function DirectoriesScreen() {
     });
   }
 
-  function removeDir(dir: Directory) {
-    if (!confirm(`Delete directory “${dir.name}”? Contacts stay in your master list.`)) return;
+  async function removeDir(dir: Directory) {
+    const ok = await askConfirm({ title: `Delete the list “${dir.name}”?`, message: 'The people in it stay in your contacts.', confirmLabel: 'Delete list', danger: true });
+    if (!ok) return;
     Store.removeDirectory(dir.id);
     if (activeId === dir.id) setActiveId(null);
-    toast('Directory deleted');
+    toast('List deleted');
   }
 
   const tagEditor = (
@@ -180,7 +182,7 @@ export function DirectoriesScreen() {
               {active.name}
               <span>{members.length}</span>
             </h1>
-            <button className="icon-btn" aria-label="Edit directory" onClick={() => openEdit(active)}>
+            <button className="icon-btn" aria-label="Edit list" onClick={() => openEdit(active)}>
               <svg viewBox="0 0 24 24">
                 <path d="M4 20h4l10-10-4-4L4 16v4z" />
                 <path d="M13 7l4 4" />
@@ -205,7 +207,7 @@ export function DirectoriesScreen() {
             <p>
               {active.mode === 'smart'
                 ? 'No one matches these tags right now. Tag contacts on the Contacts tab.'
-                : 'This list is empty. On Contacts, select people and tap Save list → Add to existing.'}
+                : 'This list is empty. On Contacts, tap Select, pick people and tap List → Add to existing.'}
             </p>
           </div>
         ) : (
@@ -264,7 +266,7 @@ export function DirectoriesScreen() {
 
         <Sheet
           open={editOpen}
-          title="Edit directory"
+          title="Edit list"
           onClose={() => setEditOpen(false)}
           right={
             <button type="button" className="link strong" onClick={saveEdit}>
@@ -279,7 +281,7 @@ export function DirectoriesScreen() {
           {active.mode === 'smart' && tagEditor}
           {active.mode === 'manual' && (
             <p className="muted">
-              To add people, select them on Contacts and use Save list → Add to existing. Remove members with Remove on
+              To add people, go to Contacts, tap Select, pick people and tap List → Add to existing. Remove members with Remove on
               each row.
             </p>
           )}
@@ -294,10 +296,10 @@ export function DirectoriesScreen() {
         <div className="topbar-row">
           <span className="logo-tile" aria-hidden="true" />
           <h1 className="brand">
-            Directories
+            Lists
             <span>{db.directories.length || ''}</span>
           </h1>
-          <button className="icon-btn accent" aria-label="New directory" onClick={openCreate}>
+          <button className="icon-btn accent" aria-label="New list" onClick={openCreate}>
             <svg viewBox="0 0 24 24">
               <path d="M12 5v14M5 12h14" />
             </svg>
@@ -310,14 +312,14 @@ export function DirectoriesScreen() {
 
       {!db.directories.length ? (
         <div className="empty">
-          <p className="mark">Directories</p>
+          <p className="mark">Lists</p>
           <h2>Save the lists you reuse</h2>
           <p>
-            Make a smart directory from tags (always up to date), or on Contacts select people and tap Save list.
+            Make a smart list from tags (always up to date), or on Contacts tap Select, pick people and tap List.
           </p>
           <div className="actions">
             <button className="btn primary" onClick={openCreate}>
-              New smart directory
+              New smart list
             </button>
           </div>
         </div>
@@ -352,7 +354,7 @@ export function DirectoriesScreen() {
 
       <Sheet
         open={createOpen}
-        title="New directory"
+        title="New list"
         onClose={() => setCreateOpen(false)}
         right={
           <button type="button" className="link strong" onClick={create}>
@@ -361,8 +363,7 @@ export function DirectoriesScreen() {
         }
       >
         <p className="muted">
-          Smart directories stay current as you tag contacts. For a fixed list, select people on Contacts and tap Save
-          list.
+          Smart lists stay current as you tag contacts. For a fixed list, go to Contacts, tap Select, pick people and tap List.
         </p>
         <label>
           Name

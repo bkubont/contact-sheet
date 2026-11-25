@@ -1,6 +1,7 @@
 import { createClient, type Session, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { APP_CONFIG, syncConfigured } from './config';
 import { DIRS_SYNC_ID, Store } from './store';
+import { askConfirm } from './dialogs';
 import type { CategoryDef, Directory, TagGroup } from '../types';
 
 const TABLE = 'contacts';
@@ -107,8 +108,13 @@ async function pull() {
   return changed;
 }
 
+/** True while the person is deciding whether this device's contacts join their account. Nothing syncs until they answer. */
+let adopting = false;
+/** A password-reset link was opened and the new-password form hasn't been shown yet. */
+let recoveryPending = false;
+
 async function syncNow(): Promise<{ ok: boolean; error?: string }> {
-  if (!syncConfigured || !session) return { ok: true };
+  if (!syncConfigured || !session || adopting) return { ok: true };
   if (syncing) {
     again = true;
     return { ok: true };
@@ -146,6 +152,11 @@ function scheduleSync(delay = 1200) {
 }
 
 async function adoptSession(s: Session | null) {
+  // A token refresh can arrive while the "add this device's contacts?" question is open; the open question decides.
+  if (adopting) {
+    if (!s) session = null; // signing out still counts
+    return;
+  }
   const prevUser = session?.user.id;
   session = s;
   if (!s) {
@@ -154,38 +165,48 @@ async function adoptSession(s: Session | null) {
   }
   if (prevUser === s.user.id && Store.owner === s.user.id) return;
 
-  if (Store.owner !== s.user.id) {
-    const localCount = Store.all().length + Store.directories().length;
-    if (Store.owner === null && localCount > 0) {
-      const keep = confirm(
-        `Add the data on this device (${Store.all().length} contact${Store.all().length === 1 ? '' : 's'}, ${Store.directories().length} director${Store.directories().length === 1 ? 'y' : 'ies'}) to your account (${s.user.email})?\n\nChoose Cancel to remove it from this device and only use what’s saved in your account.`,
-      );
-      if (keep) {
-        const localDirs: Directory[] = Store.directories().map((d) => ({ ...d }));
-        const localCategories: CategoryDef[] = Store.categories().map((c) => ({ ...c }));
-        const localTagGroups: TagGroup[] = Store.tagGroups().map((g) => ({
-          ...g,
-          tags: [...g.tags],
-        }));
-        // Keep contacts queued for upload, but do NOT upload taxonomy until we merge with the account.
-        Store.resetForOwner(s.user.id, { keepContacts: true, queueDirectories: false });
-        applyingRemote = true;
-        try {
-          await pull();
-        } finally {
-          applyingRemote = false;
-        }
-        Store.mergeTaxonomy({
-          directories: localDirs,
-          categories: localCategories,
-          tagGroups: localTagGroups,
+  adopting = true;
+  try {
+    if (Store.owner !== s.user.id) {
+      const localCount = Store.all().length + Store.directories().length;
+      if (Store.owner === null && localCount > 0) {
+        const nc = Store.all().length;
+        const nd = Store.directories().length;
+        const keep = await askConfirm({
+          title: 'Add this device’s contacts to your account?',
+          message: `This device has ${nc} contact${nc === 1 ? '' : 's'} and ${nd} list${nd === 1 ? '' : 's'}. Add them to ${s.user.email}, or remove them from this device and use only what’s in your account.`,
+          confirmLabel: 'Add to account',
+          cancelLabel: 'Use account only',
         });
+        if (keep) {
+          const localDirs: Directory[] = Store.directories().map((d) => ({ ...d }));
+          const localCategories: CategoryDef[] = Store.categories().map((c) => ({ ...c }));
+          const localTagGroups: TagGroup[] = Store.tagGroups().map((g) => ({
+            ...g,
+            tags: [...g.tags],
+          }));
+          // Keep contacts queued for upload, but do NOT upload taxonomy until we merge with the account.
+          Store.resetForOwner(s.user.id, { keepContacts: true, queueDirectories: false });
+          applyingRemote = true;
+          try {
+            await pull();
+          } finally {
+            applyingRemote = false;
+          }
+          Store.mergeTaxonomy({
+            directories: localDirs,
+            categories: localCategories,
+            tagGroups: localTagGroups,
+          });
+        } else {
+          Store.resetForOwner(s.user.id);
+        }
       } else {
         Store.resetForOwner(s.user.id);
       }
-    } else {
-      Store.resetForOwner(s.user.id);
     }
+  } finally {
+    adopting = false;
   }
   await syncNow();
 }
@@ -210,7 +231,10 @@ export function startSync() {
 
   client.auth.onAuthStateChange((event, s) => {
     setTimeout(() => {
-      if (event === 'PASSWORD_RECOVERY') window.dispatchEvent(new CustomEvent('password-recovery'));
+      if (event === 'PASSWORD_RECOVERY') {
+        recoveryPending = true;
+        window.dispatchEvent(new CustomEvent('password-recovery'));
+      }
       if (event === 'SIGNED_OUT') {
         session = null;
         setStatus('signed-out');
@@ -237,6 +261,16 @@ export function startSync() {
 
 export const Sync = {
   enabled: syncConfigured,
+  /** A password-reset link is waiting for the new-password form. */
+  get recoveryPending() {
+    return recoveryPending;
+  },
+  /** The form is showing now; returns whether it was waiting. */
+  takeRecovery() {
+    const was = recoveryPending;
+    recoveryPending = false;
+    return was;
+  },
   /** The signed-in Supabase client (shared with Canopy Estimate's project), or null. */
   get client(): SupabaseClient | null {
     return session ? client : null;

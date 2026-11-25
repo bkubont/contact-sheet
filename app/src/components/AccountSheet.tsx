@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Sync, type SyncStatus } from '../lib/sync';
 import { toast } from '../lib/util';
+import { askConfirm, notify } from '../lib/dialogs';
 import { Sheet } from './Sheet';
 
 function statusText(s: SyncStatus) {
@@ -44,8 +45,14 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
       setMsg('Choose a new password.');
       setOk(true);
     };
-    window.addEventListener('password-recovery', onRecovery);
-    return () => window.removeEventListener('password-recovery', onRecovery);
+    // The link may have opened before this screen was shown.
+    if (Sync.takeRecovery()) onRecovery();
+    const onEvent = () => {
+      Sync.takeRecovery();
+      onRecovery();
+    };
+    window.addEventListener('password-recovery', onEvent);
+    return () => window.removeEventListener('password-recovery', onEvent);
   }, []);
 
   useEffect(() => {
@@ -174,15 +181,15 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
                 type="button"
                 className="btn"
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      'Sign out? Your contacts stay safe in your account and will be removed from this device until you sign in again.',
-                    )
-                  )
-                    return;
+                  const ok = await askConfirm({
+                    title: 'Sign out?',
+                    message: 'Your contacts stay safe in your account. They’re removed from this device until you sign in again.',
+                    confirmLabel: 'Sign out',
+                  });
+                  if (!ok) return;
                   const r = await Sync.signOut();
                   if (r.error) {
-                    alert(r.error);
+                    await notify({ title: 'Couldn’t sign out', message: r.error });
                     return;
                   }
                   toast('Signed out');
@@ -196,15 +203,16 @@ export function AccountSheet({ open, onClose }: { open: boolean; onClose: () => 
               type="button"
               className="btn danger wide"
               onClick={async () => {
-                if (
-                  !confirm(
-                    `Permanently delete every contact and directory saved for ${user.email} in the cloud, and sign out? Your login stays, because it is shared with Canopy Estimate. This cannot be undone.`,
-                  )
-                )
-                  return;
-                if (!confirm('Really erase your Contact Sheet data from the cloud?')) return;
+                const ok = await askConfirm({
+                  title: 'Delete your Contact Sheet data?',
+                  message: `Every contact and list saved for ${user.email} in the cloud is erased, on all your devices, and you’re signed out. Your login stays, because it’s shared with Canopy Estimate. This can’t be undone.`,
+                  confirmLabel: 'Delete my data',
+                  danger: true,
+                  typeToConfirm: 'DELETE',
+                });
+                if (!ok) return;
                 const r = await Sync.deleteCloudData();
-                if (r.error) alert('Could not delete your data.\n\n' + r.error);
+                if (r.error) await notify({ title: 'Couldn’t delete your data', message: r.error });
                 else {
                   toast('Your Contact Sheet data has been deleted');
                   onClose();

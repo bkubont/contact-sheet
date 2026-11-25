@@ -1,6 +1,7 @@
 import type { CanopyLink, CategoryDef, Contact, Db, Directory, LabeledValue, TagGroup } from '../types';
 import { DEFAULT_CATEGORIES, DEFAULT_TAG_GROUPS } from '../types';
 import { uid } from './util';
+import { notify } from './dialogs';
 import { colorForName, isColorKey, nearestColor, PALETTE_KEYS, type ColorKey } from './palette';
 
 const DB_KEY = 'contactSheet.db.v2';
@@ -175,7 +176,7 @@ function persistDb(next: Db): boolean {
     localStorage.setItem(DB_KEY, JSON.stringify(next));
     return true;
   } catch (e) {
-    alert('Could not save — this device may be out of storage space.\n\n' + (e as Error).message);
+    void notify({ title: 'Couldn’t save', message: `This device may be out of storage space. (${(e as Error).message})` });
     return false;
   }
 }

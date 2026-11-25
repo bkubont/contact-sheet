@@ -1,36 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Contact } from '../types';
 import { Store, displayName, loadSelection, saveSelection } from '../lib/store';
 import { useDb } from '../hooks/useStore';
 import { ContactEditor } from '../components/ContactEditor';
 import { PdfSheet } from '../components/PdfSheet';
 import { Sheet } from '../components/Sheet';
-import { downloadBlob, toast } from '../lib/util';
-import { toVCard } from '../lib/importers';
+import { FilterSheet } from '../components/FilterSheet';
+import { BulkTagSheet } from '../components/BulkTagSheet';
+import { SaveListSheet } from '../components/SaveListSheet';
 import { ColorPill, Dot } from '../components/Color';
-
-const UNTAGGED = '__untagged__';
-const UNCAT = '__uncategorized__';
+import { downloadBlob, toast, uid } from '../lib/util';
+import { toVCard } from '../lib/importers';
+import { askConfirm } from '../lib/dialogs';
+import { NO_FILTERS, UNCAT, UNTAGGED, hasFilters, passesFilters, type Filters } from '../lib/filters';
 
 function sortKey(c: Contact) {
   return `${c.last || c.first || c.company} ${c.first}`.toLowerCase();
 }
 
-function matches(c: Contact, q: string, categoryName: (id: string) => string) {
+function matches(c: Contact, q: string) {
   if (!q) return true;
-  const hay = [
-    c.first,
-    c.last,
-    c.company,
-    c.title,
-    c.address,
-    c.notes,
-    c.birthday,
-    categoryName(c.category),
-    ...c.tags,
-    ...c.phones.map((p) => p.value),
-    ...c.emails.map((e) => e.value),
-  ]
+  const hay = [c.first, c.last, c.company, c.title, c.address, c.notes, c.birthday, Store.categoryName(c.category), ...c.tags, ...c.phones.map((p) => p.value), ...c.emails.map((e) => e.value)]
     .join(' ')
     .toLowerCase();
   return q
@@ -39,71 +29,84 @@ function matches(c: Contact, q: string, categoryName: (id: string) => string) {
     .every((w) => hay.includes(w));
 }
 
-export function ContactsScreen({
-  onOpenMenu,
-  syncDot = null,
-}: {
-  onOpenMenu: () => void;
-  syncDot?: string | null;
-}) {
+const Icon = {
+  plus: <path d="M12 5v14M5 12h14" />,
+  filter: <path d="M4 6h16M7 12h10M10 18h4" />,
+  pdf: (
+    <>
+      <path d="M7 3h7l5 5v13H7z" />
+      <path d="M14 3v5h5M10 13h6M10 17h6" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M3 12V4h8l10 10-8 8z" />
+      <circle cx="7.5" cy="8.5" r="1.5" />
+    </>
+  ),
+  folder: <path d="M3 7h6l2 2h10v10H3z" />,
+  list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="19" cy="12" r="1.5" />
+    </>
+  ),
+};
+const Svg = ({ children }: { children: ReactNode }) => <svg viewBox="0 0 24 24">{children}</svg>;
+
+export function ContactsScreen({ focusTag, onOpenSettings }: { focusTag?: { tag: string; at: number } | null; onOpenSettings: () => void }) {
   const db = useDb();
   const [query, setQuery] = useState('');
-  const [tag, setTag] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [selected, setSelected] = useState<Set<string>>(() => loadSelection());
+  const [selecting, setSelecting] = useState(() => loadSelection().size > 0);
   const [editing, setEditing] = useState<Contact | null | undefined>(undefined); // undefined=closed, null=new
   const [pdfOpen, setPdfOpen] = useState(false);
-  /** When true, PDF uses the current selection only — never falls back to the filtered list. */
   const [pdfFromSelection, setPdfFromSelection] = useState(false);
-  const [bulkTagOpen, setBulkTagOpen] = useState(false);
-  const [bulkTag, setBulkTag] = useState('');
-  const [bulkCatOpen, setBulkCatOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [catOpen, setCatOpen] = useState(false);
   const [bulkCat, setBulkCat] = useState('');
-  const [saveDirOpen, setSaveDirOpen] = useState(false);
-  const [dirName, setDirName] = useState('');
-  const [targetDirId, setTargetDirId] = useState<string>('');
-  const [sameNameMode, setSameNameMode] = useState<'merge' | 'replace'>('merge');
+  const [listOpen, setListOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const counts = useMemo(() => Store.tagCounts(), [db]);
-  const catCounts = useMemo(() => Store.categoryCounts(), [db]);
-  const untaggedCount = useMemo(() => db.contacts.filter((c) => !c.tags.length).length, [db]);
-  const uncatCount = useMemo(() => db.contacts.filter((c) => !c.category).length, [db]);
-  const manualDirectories = useMemo(
-    () => db.directories.filter((d) => d.mode === 'manual').sort((a, b) => a.name.localeCompare(b.name)),
-    [db],
-  );
+  // Coming from Tags → "n contacts": show just that tag.
+  useEffect(() => {
+    if (focusTag) {
+      setFilters({ cats: [], tags: [focusTag.tag], match: 'any' });
+      setQuery('');
+    }
+  }, [focusTag]);
 
-  // Drop selection IDs that no longer exist (delete, restore, wipe).
+  // Drop selected ids that no longer exist (delete, restore, wipe), and filters for tags/categories that are gone.
   useEffect(() => {
     const alive = new Set(db.contacts.map((c) => c.id));
     setSelected((prev) => {
-      let changed = false;
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (alive.has(id)) next.add(id);
-        else changed = true;
-      }
-      if (!changed) return prev;
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      if (next.size === prev.size) return prev;
       saveSelection(next);
       return next;
     });
-  }, [db.contacts]);
+    const tagsNow = new Set(Store.tagCounts().map(([t]) => t));
+    const catsNow = new Set(db.categories.map((c) => c.id));
+    setFilters((f) => {
+      const tags = f.tags.filter((t) => t === UNTAGGED || tagsNow.has(t));
+      const cats = f.cats.filter((c) => c === UNCAT || catsNow.has(c));
+      return tags.length === f.tags.length && cats.length === f.cats.length ? f : { ...f, tags, cats };
+    });
+  }, [db]);
 
-  const visible = useMemo(() => {
-    return db.contacts
-      .filter((c) => {
-        if (categoryFilter === UNCAT) {
-          if (c.category) return false;
-        } else if (categoryFilter && c.category !== categoryFilter) {
-          return false;
-        }
-        if (tag === null) return true;
-        if (tag === UNTAGGED) return !c.tags.length;
-        return c.tags.includes(tag);
-      })
-      .filter((c) => matches(c, query, Store.categoryName))
-      .sort((a, b) => sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base' }));
-  }, [db, tag, categoryFilter, query]);
+  const countFor = (f: Filters) => db.contacts.filter((c) => passesFilters(c, f) && matches(c, query)).length;
+
+  const visible = useMemo(
+    () =>
+      db.contacts
+        .filter((c) => passesFilters(c, filters) && matches(c, query))
+        .sort((a, b) => sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base' })),
+    [db, filters, query],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Contact[]>();
@@ -116,238 +119,170 @@ export function ContactsScreen({
     return [...map.entries()];
   }, [visible]);
 
+  const selectedContacts = useMemo(() => db.contacts.filter((c) => selected.has(c.id)), [db, selected]);
+  const n = selectedContacts.length;
+
+  function setSel(next: Set<string>) {
+    setSelected(next);
+    saveSelection(next);
+  }
   function toggleSel(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      saveSelection(next);
-      return next;
-    });
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSel(next);
   }
-
+  function endSelect() {
+    setSelecting(false);
+    setSel(new Set());
+  }
+  const allShownSelected = visible.length > 0 && visible.every((c) => selected.has(c.id));
   function selectAllShown() {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      visible.forEach((c) => next.add(c.id));
-      saveSelection(next);
-      return next;
-    });
+    const next = new Set(selected);
+    if (allShownSelected) visible.forEach((c) => next.delete(c.id));
+    else visible.forEach((c) => next.add(c.id));
+    setSel(next);
   }
 
-  function clearSel() {
-    setSelected(new Set());
-    saveSelection(new Set());
+  const filtering = hasFilters(filters) || !!query.trim();
+
+  // Filter chips under the search box
+  const realTags = filters.tags.filter((t) => t !== UNTAGGED);
+  const activeChips = [
+    ...filters.cats.map((id) => ({
+      key: `c:${id}`,
+      label: id === UNCAT ? 'No category' : Store.categoryName(id),
+      color: id === UNCAT ? undefined : Store.categoryColor(id),
+      remove: () => setFilters({ ...filters, cats: filters.cats.filter((x) => x !== id) }),
+    })),
+    ...filters.tags.map((t) => ({
+      key: `t:${t}`,
+      label: t === UNTAGGED ? 'No tags' : t,
+      color: t === UNTAGGED ? undefined : Store.tagColor(t),
+      remove: () => setFilters({ ...filters, tags: filters.tags.filter((x) => x !== t) }),
+    })),
+  ];
+  const canSaveSmart = realTags.length > 0 && !filters.cats.length && !filters.tags.includes(UNTAGGED);
+
+  function saveFilterAsList() {
+    const name = realTags.join(filters.match === 'all' ? ' + ' : ' / ');
+    Store.upsertDirectory({ id: uid(), name, notes: '', mode: 'smart', contactIds: [], tags: realTags, match: filters.match, created: Date.now(), updated: Date.now() });
+    toast(`Made the smart list “${name}” (see Lists)`);
   }
 
-  const selectedContacts = useMemo(
-    () => db.contacts.filter((c) => selected.has(c.id)),
-    [db, selected],
-  );
+  const pdfTitle =
+    (filters.cats.length === 1 && filters.cats[0] !== UNCAT && Store.categoryName(filters.cats[0])) ||
+    (realTags.length === 1 && !filters.cats.length ? realTags[0] : '') ||
+    'Contact Sheet';
 
-  const pdfContacts = pdfFromSelection ? selectedContacts : visible;
-
-  function applyBulk(add: boolean) {
-    let t = bulkTag.trim();
-    if (!t) return;
-    const existing = counts.find(([x]) => x.toLowerCase() === t.toLowerCase());
-    if (existing) t = existing[0];
-    Store.bulkTag([...selected], t, add);
-    toast(add ? `Tagged ${selectedContacts.length}` : `Removed tag from ${selectedContacts.length}`);
-    setBulkTagOpen(false);
-    setBulkTag('');
-  }
-
-  function applyBulkCategory() {
-    Store.bulkCategory([...selected], bulkCat);
-    toast(bulkCat ? `Set category on ${selectedContacts.length}` : `Cleared category on ${selectedContacts.length}`);
-    setBulkCatOpen(false);
-  }
-
-  function saveAsDirectory() {
-    if (!selectedContacts.length) return;
-    const ids = selectedContacts.map((c) => c.id);
-
-    if (targetDirId) {
-      const existing = Store.getDirectory(targetDirId);
-      if (!existing || existing.mode !== 'manual') return;
-      const merged = [...new Set([...existing.contactIds, ...ids])];
-      Store.upsertDirectory({ ...existing, contactIds: merged });
-      toast(`Added to “${existing.name}”`);
-      setSaveDirOpen(false);
-      setDirName('');
-      setTargetDirId('');
-      return;
-    }
-
-    const name = dirName.trim();
-    if (!name) return;
-    const sameName = db.directories.find(
-      (d) => d.mode === 'manual' && d.name.toLowerCase() === name.toLowerCase(),
-    );
-    if (sameName) {
-      const contactIds =
-        sameNameMode === 'merge' ? [...new Set([...sameName.contactIds, ...ids])] : ids;
-      if (
-        sameNameMode === 'replace' &&
-        !confirm(
-          `Replace all ${sameName.contactIds.length} members of “${sameName.name}” with the ${ids.length} selected?`,
-        )
-      )
-        return;
-      Store.upsertDirectory({ ...sameName, contactIds });
-      toast(sameNameMode === 'merge' ? `Merged into “${sameName.name}”` : `Replaced “${sameName.name}”`);
-    } else {
-      Store.upsertDirectory({
-        id: crypto.randomUUID?.() || String(Date.now()),
-        name,
-        notes: '',
-        mode: 'manual',
-        contactIds: ids,
-        tags: [],
-        match: 'any',
-        created: Date.now(),
-        updated: Date.now(),
-      });
-      toast(`Saved “${name}”`);
-    }
-    setSaveDirOpen(false);
-    setDirName('');
-    setTargetDirId('');
-    setSameNameMode('merge');
-  }
-
-  const collidingDir =
-    !targetDirId && dirName.trim()
-      ? db.directories.find(
-          (d) => d.mode === 'manual' && d.name.toLowerCase() === dirName.trim().toLowerCase(),
-        )
-      : undefined;
-
-  function bulkDelete() {
-    const n = selectedContacts.length;
+  async function bulkDelete() {
+    setMoreOpen(false);
     if (!n) return;
-    if (!confirm(`Delete ${n} selected contact${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    const ok = await askConfirm({
+      title: `Delete ${n} contact${n === 1 ? '' : 's'}?`,
+      message: 'They’re removed from every list. This can’t be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     Store.removeMany(selectedContacts.map((c) => c.id));
-    clearSel();
+    endSelect();
     toast(`Deleted ${n}`);
   }
 
   function exportSelected() {
-    const list = selectedContacts.length ? selectedContacts : visible;
+    setMoreOpen(false);
+    const list = n ? selectedContacts : visible;
     if (!list.length) return;
-    const blob = new Blob([toVCard(list)], { type: 'text/vcard' });
-    downloadBlob(blob, `contacts-${list.length}.vcf`);
+    downloadBlob(new Blob([toVCard(list)], { type: 'text/vcard' }), `contacts-${list.length}.vcf`);
     toast(`Exported ${list.length}`);
   }
 
-  const presetTag = tag && tag !== UNTAGGED ? tag : null;
-  const presetCategory =
-    categoryFilter && categoryFilter !== UNCAT ? categoryFilter : null;
-
-  const pdfTitle =
-    (categoryFilter && categoryFilter !== UNCAT && Store.categoryName(categoryFilter)) ||
-    (tag && tag !== UNTAGGED ? tag : 'Contact Sheet');
+  const presetTag = realTags.length === 1 ? realTags[0] : null;
+  const presetCategory = filters.cats.length === 1 && filters.cats[0] !== UNCAT ? filters.cats[0] : null;
 
   return (
     <>
       <header className="topbar">
-        <div className="topbar-row">
-          <button className="icon-btn" aria-label="Menu" onClick={onOpenMenu} style={{ position: 'relative' }}>
-            <svg viewBox="0 0 24 24">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-            {syncDot && <span className={`sync-dot ${syncDot === 'ok' ? '' : syncDot}`} />}
-          </button>
-          <span className="logo-tile" aria-hidden="true" />
-          <h1 className="brand">
-            Contact Sheet
-            <span>{db.contacts.length || ''}</span>
-          </h1>
-          <button className="icon-btn accent" aria-label="Add contact" onClick={() => setEditing(null)}>
-            <svg viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </div>
-        <div className="search">
-          <svg viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="6" />
-            <path d="M20 20l-4.5-4.5" />
-          </svg>
-          <input
-            type="search"
-            placeholder="Search name, company, phone, tag, category…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
+        {selecting ? (
+          <div className="topbar-row">
+            <button type="button" className="link" onClick={endSelect}>
+              Done
+            </button>
+            <h1 className="brand center">{n ? `${n} selected` : 'Select people'}</h1>
+            <button type="button" className="link" onClick={selectAllShown} disabled={!visible.length}>
+              {allShownSelected ? 'Select none' : 'Select all'}
+            </button>
+          </div>
+        ) : (
+          <div className="topbar-row">
+            <span className="logo-tile" aria-hidden="true" />
+            <h1 className="brand">
+              Contacts
+              <span>{db.contacts.length || ''}</span>
+            </h1>
+            {filtering && visible.length > 0 && (
+              <button
+                className="icon-btn"
+                aria-label={`Make a PDF of these ${visible.length}`}
+                title={`PDF of these ${visible.length}`}
+                onClick={() => {
+                  setPdfFromSelection(false);
+                  setPdfOpen(true);
+                }}
+              >
+                <Svg>{Icon.pdf}</Svg>
+              </button>
+            )}
+            {db.contacts.length > 0 && (
+              <button type="button" className="link" onClick={() => setSelecting(true)}>
+                Select
+              </button>
+            )}
+            <button className="icon-btn accent" aria-label="Add contact" onClick={() => setEditing(null)}>
+              <Svg>{Icon.plus}</Svg>
+            </button>
+          </div>
+        )}
         {db.contacts.length > 0 && (
-          <>
-            <div className="filter-row">
-              <div className="filter-label">Categories</div>
-              <div className="chips">
-                <button
-                  className={`chip${categoryFilter === null ? ' on' : ''}`}
-                  onClick={() => setCategoryFilter(null)}
-                >
-                  All
-                </button>
-                {db.categories.map((cat) => {
-                  const n = catCounts.find(([id]) => id === cat.id)?.[1] || 0;
-                  return (
-                    <button
-                      key={cat.id}
-                      className={`chip${categoryFilter === cat.id ? ' on' : ''}`}
-                      data-color={cat.color}
-                      onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
-                    >
-                      {cat.name}
-                      <span className="n">{n}</span>
-                    </button>
-                  );
-                })}
-                {!!uncatCount && (
-                  <button
-                    className={`chip${categoryFilter === UNCAT ? ' on' : ''}`}
-                    onClick={() => setCategoryFilter(categoryFilter === UNCAT ? null : UNCAT)}
-                  >
-                    Uncategorized
-                    <span className="n">{uncatCount}</span>
-                  </button>
-                )}
-              </div>
+          <div className="search-row">
+            <div className="search">
+              <svg viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="6" />
+                <path d="M20 20l-4.5-4.5" />
+              </svg>
+              <input type="search" placeholder="Search" aria-label="Search contacts" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
             </div>
-            <div className="filter-row">
-              <div className="filter-label">Tags</div>
-              <div className="chips">
-                <button className={`chip${tag === null ? ' on' : ''}`} onClick={() => setTag(null)}>
-                  All
-                </button>
-                {counts.map(([t, n]) => (
-                  <button
-                    key={t}
-                    className={`chip${tag === t ? ' on' : ''}`}
-                    data-color={Store.tagColor(t)}
-                    onClick={() => setTag(tag === t ? null : t)}
-                  >
-                    {t}
-                    <span className="n">{n}</span>
-                  </button>
-                ))}
-                {!!counts.length && !!untaggedCount && (
-                  <button
-                    className={`chip${tag === UNTAGGED ? ' on' : ''}`}
-                    onClick={() => setTag(tag === UNTAGGED ? null : UNTAGGED)}
-                  >
-                    Untagged
-                    <span className="n">{untaggedCount}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </>
+            <button
+              type="button"
+              className={`filter-btn${hasFilters(filters) ? ' on' : ''}`}
+              aria-label={hasFilters(filters) ? `Filter (${activeChips.length} on)` : 'Filter'}
+              onClick={() => setFilterOpen(true)}
+            >
+              <Svg>{Icon.filter}</Svg>
+              Filter
+              {hasFilters(filters) && <b className="badge-n">{activeChips.length}</b>}
+            </button>
+          </div>
+        )}
+        {activeChips.length > 0 && (
+          <div className="active-filters">
+            {activeChips.map((c) => (
+              <button key={c.key} type="button" className="chip on" data-color={c.color} onClick={c.remove} aria-label={`Remove filter ${c.label}`}>
+                {c.label}
+                <span aria-hidden="true">×</span>
+              </button>
+            ))}
+            {realTags.length > 1 && <span className="muted match-note">{filters.match === 'all' ? 'all of these' : 'any of these'}</span>}
+            <button type="button" className="link small" onClick={() => setFilters(NO_FILTERS)}>
+              Clear
+            </button>
+            {canSaveSmart && (
+              <button type="button" className="link small" onClick={saveFilterAsList}>
+                Save as list
+              </button>
+            )}
+          </div>
         )}
       </header>
 
@@ -355,9 +290,9 @@ export function ContactsScreen({
         <div className="empty">
           <p className="mark">Contact Sheet</p>
           <h2>Your personal directory</h2>
-          <p>Import contacts, tag them, save directories, and print a PDF of whoever you pick.</p>
+          <p>Import contacts, tag them, save lists, and print a PDF of whoever you pick.</p>
           <div className="actions">
-            <button className="btn primary" onClick={onOpenMenu}>
+            <button className="btn primary" onClick={onOpenSettings}>
               Import contacts
             </button>
             <button className="btn" onClick={() => setEditing(null)}>
@@ -368,10 +303,23 @@ export function ContactsScreen({
       ) : !visible.length ? (
         <div className="empty">
           <h2>No matches</h2>
-          <p>Try another search or tag filter.</p>
+          <p>Try another search, or change the filter.</p>
+          {filtering && (
+            <div className="actions">
+              <button
+                className="btn"
+                onClick={() => {
+                  setFilters(NO_FILTERS);
+                  setQuery('');
+                }}
+              >
+                Show everyone
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <main className="list tablet-grid">
+        <main className={`list tablet-grid${selecting ? ' selecting' : ''}`}>
           {grouped.map(([letter, people]) => (
             <section key={letter}>
               <div className="letter">{letter}</div>
@@ -379,29 +327,20 @@ export function ContactsScreen({
                 const sel = selected.has(c.id);
                 const catName = c.category ? Store.categoryName(c.category) : '';
                 const catColor = c.category ? Store.categoryColor(c.category) : undefined;
-                const meta =
-                  [c.title, c.company].filter(Boolean).join(' · ') ||
-                  (catName ? '' : c.phones[0]?.value || c.emails[0]?.value || '');
+                const meta = [c.title, c.company].filter(Boolean).join(' · ') || (catName ? '' : c.phones[0]?.value || c.emails[0]?.value || '');
+                const open = () => (selecting ? toggleSel(c.id) : setEditing(c));
                 return (
-                  <div
-                    key={c.id}
-                    className={`row${sel ? ' sel' : ''}`}
-                    data-color={catColor}
-                  >
-                    <button
-                      type="button"
-                      className="pick"
-                      aria-label="Select"
-                      aria-pressed={sel}
-                      onClick={() => toggleSel(c.id)}
-                    >
-                      {sel && (
-                        <svg viewBox="0 0 24 24">
-                          <path d="M5 12l5 5L20 7" />
-                        </svg>
-                      )}
-                    </button>
-                    <button type="button" className="row-main" style={{ border: 0, background: 'transparent', textAlign: 'left', padding: 0 }} onClick={() => setEditing(c)}>
+                  <div key={c.id} className={`row${sel ? ' sel' : ''}`} data-color={catColor}>
+                    {selecting && (
+                      <button type="button" className="pick" aria-label={`Select ${displayName(c)}`} aria-pressed={sel} onClick={() => toggleSel(c.id)}>
+                        {sel && (
+                          <svg viewBox="0 0 24 24">
+                            <path d="M5 12l5 5L20 7" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                    <button type="button" className="row-main" onClick={open}>
                       <div className="row-name">{displayName(c)}</div>
                       {(catName || meta) && (
                         <div className="row-meta">
@@ -425,11 +364,13 @@ export function ContactsScreen({
                         </div>
                       )}
                     </button>
-                    <button type="button" className="row-open" aria-label="Open" onClick={() => setEditing(c)}>
-                      <svg viewBox="0 0 24 24">
-                        <path d="M9 6l6 6-6 6" />
-                      </svg>
-                    </button>
+                    {!selecting && (
+                      <button type="button" className="row-open" aria-label={`Open ${displayName(c)}`} onClick={open}>
+                        <svg viewBox="0 0 24 24">
+                          <path d="M9 6l6 6-6 6" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -438,226 +379,104 @@ export function ContactsScreen({
         </main>
       )}
 
-      {selectedContacts.length > 0 && (
-        <footer className="selbar">
-          <div className="selbar-info">
-            <b>{selectedContacts.length}</b> selected
-            <button type="button" className="link" onClick={selectAllShown}>
-              Select all shown
-            </button>
-            <button type="button" className="link" onClick={clearSel}>
-              Clear
-            </button>
-          </div>
-          <div className="selbar-actions">
-            <button type="button" className="btn" onClick={() => setBulkTagOpen(true)}>
-              Tag…
-            </button>
-            <button type="button" className="btn" onClick={() => { setBulkCat(selectedContacts[0]?.category || ''); setBulkCatOpen(true); }}>
-              Category…
-            </button>
-            <button type="button" className="btn" onClick={exportSelected}>
-              Export
-            </button>
-            <button type="button" className="btn" onClick={bulkDelete}>
-              Delete
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setDirName(tag && tag !== UNTAGGED ? tag : '');
-                setTargetDirId('');
-                setSameNameMode('merge');
-                setSaveDirOpen(true);
-              }}
-            >
-              Save list
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => {
-                setPdfFromSelection(true);
-                setPdfOpen(true);
-              }}
-            >
-              Make PDF
-            </button>
-          </div>
+      {selecting && (
+        <footer className="actionbar" aria-label="Actions for selected people">
+          <button type="button" disabled={!n} onClick={() => setTagOpen(true)}>
+            <Svg>{Icon.tag}</Svg>
+            Tag
+          </button>
+          <button
+            type="button"
+            disabled={!n}
+            onClick={() => {
+              const cats = new Set(selectedContacts.map((c) => c.category));
+              setBulkCat(cats.size === 1 ? [...cats][0] : '');
+              setCatOpen(true);
+            }}
+          >
+            <Svg>{Icon.folder}</Svg>
+            Category
+          </button>
+          <button type="button" disabled={!n} onClick={() => setListOpen(true)}>
+            <Svg>{Icon.list}</Svg>
+            List
+          </button>
+          <button
+            type="button"
+            disabled={!n}
+            onClick={() => {
+              setPdfFromSelection(true);
+              setPdfOpen(true);
+            }}
+          >
+            <Svg>{Icon.pdf}</Svg>
+            PDF
+          </button>
+          <button type="button" disabled={!n} onClick={() => setMoreOpen(true)}>
+            <Svg>{Icon.more}</Svg>
+            More
+          </button>
         </footer>
       )}
 
-      {/* Quick PDF of current filter without selecting */}
-      {db.contacts.length > 0 && selectedContacts.length === 0 && visible.length > 0 && (
-        <footer className="selbar" style={{ opacity: 0.97 }}>
-          <div className="selbar-info">
-            <span className="muted">{visible.length} shown</span>
-            <button type="button" className="link" onClick={selectAllShown}>
-              Select all
-            </button>
-            <button type="button" className="link" onClick={exportSelected}>
-              Export shown
-            </button>
-          </div>
-          <div className="selbar-actions">
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => {
-                setPdfFromSelection(false);
-                setPdfOpen(true);
-              }}
-            >
-              PDF these
-            </button>
-          </div>
-        </footer>
-      )}
-
-      <ContactEditor
-        open={editing !== undefined}
-        contact={editing ?? null}
-        presetTag={presetTag}
-        presetCategory={presetCategory}
-        onClose={() => setEditing(undefined)}
-      />
+      <ContactEditor open={editing !== undefined} contact={editing ?? null} presetTag={presetTag} presetCategory={presetCategory} onClose={() => setEditing(undefined)} />
       <PdfSheet
         open={pdfOpen}
-        contacts={pdfContacts}
+        contacts={pdfFromSelection ? selectedContacts : visible}
         defaultTitle={pdfTitle}
         onClose={() => {
           setPdfOpen(false);
           setPdfFromSelection(false);
         }}
       />
-
-      <Sheet open={bulkCatOpen} title="Set category" onClose={() => setBulkCatOpen(false)}>
-        <p className="muted">
-          Assign a primary category to {selectedContacts.length} selected contact
-          {selectedContacts.length === 1 ? '' : 's'}.
-        </p>
-        <label>
-          Category
-          <select value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
-            <option value="">— None —</option>
-            {db.categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="btn primary wide" onClick={applyBulkCategory}>
-          Apply category
-        </button>
-      </Sheet>
-
-      <Sheet open={bulkTagOpen} title="Tag selected" onClose={() => setBulkTagOpen(false)}>
-        <p className="muted">
-          Add or remove a tag on {selectedContacts.length} selected contact
-          {selectedContacts.length === 1 ? '' : 's'}.
-        </p>
-        <label>
-          Tag
-          <input
-            value={bulkTag}
-            list="tag-list"
-            placeholder="e.g. Family"
-            onChange={(e) => setBulkTag(e.target.value)}
-          />
-        </label>
-        <datalist id="tag-list">
-          {counts.map(([t]) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
-        <div className="grid2">
-          <button type="button" className="btn primary" onClick={() => applyBulk(true)}>
-            Add tag
-          </button>
-          <button type="button" className="btn" onClick={() => applyBulk(false)}>
-            Remove tag
-          </button>
-        </div>
-      </Sheet>
+      <FilterSheet open={filterOpen} value={filters} onApply={setFilters} onClose={() => setFilterOpen(false)} countFor={countFor} />
+      <BulkTagSheet open={tagOpen} people={selectedContacts} onClose={() => setTagOpen(false)} />
+      <SaveListSheet open={listOpen} people={selectedContacts} defaultName={pdfTitle === 'Contact Sheet' ? '' : pdfTitle} onClose={() => setListOpen(false)} />
 
       <Sheet
-        open={saveDirOpen}
-        title="Save directory"
-        onClose={() => {
-          setSaveDirOpen(false);
-          setTargetDirId('');
-        }}
+        open={catOpen}
+        title={`Category for ${n}`}
+        onClose={() => setCatOpen(false)}
         right={
           <button
             type="button"
             className="link strong"
-            onClick={saveAsDirectory}
-            disabled={!(targetDirId || dirName.trim()) || !selectedContacts.length}
+            onClick={() => {
+              Store.bulkCategory([...selected], bulkCat);
+              toast(bulkCat ? `${Store.categoryName(bulkCat)} for ${n}` : `Cleared the category for ${n}`);
+              setCatOpen(false);
+            }}
           >
-            Save
+            Apply
           </button>
         }
       >
-        <p className="muted">
-          Save {selectedContacts.length} selected contact{selectedContacts.length === 1 ? '' : 's'} into a directory.
-        </p>
-        {!!manualDirectories.length && (
-          <label>
-            Add to existing
-            <select
-              value={targetDirId}
-              onChange={(e) => {
-                setTargetDirId(e.target.value);
-                if (e.target.value) setDirName('');
-              }}
-            >
-              <option value="">— New directory —</option>
-              {manualDirectories.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.contactIds.length})
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!targetDirId && (
-          <label>
-            Name
-            <input
-              value={dirName}
-              placeholder="e.g. Family 2026"
-              onChange={(e) => setDirName(e.target.value)}
-            />
-          </label>
-        )}
-        {collidingDir && (
-          <fieldset>
-            <legend>“{collidingDir.name}” already exists ({collidingDir.contactIds.length})</legend>
-            <div className="seg" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <button
-                type="button"
-                className={sameNameMode === 'merge' ? 'on' : ''}
-                onClick={() => setSameNameMode('merge')}
-              >
-                Merge
-              </button>
-              <button
-                type="button"
-                className={sameNameMode === 'replace' ? 'on' : ''}
-                onClick={() => setSameNameMode('replace')}
-              >
-                Replace
-              </button>
-            </div>
-            <p className="muted" style={{ marginTop: 8 }}>
-              {sameNameMode === 'merge'
-                ? 'Add the selection to the existing members.'
-                : 'Discard current members and keep only the selection.'}
-            </p>
-          </fieldset>
-        )}
+        <div className="choice-chips" role="radiogroup" aria-label="Category">
+          {db.categories.map((c) => (
+            <button key={c.id} type="button" role="radio" aria-checked={bulkCat === c.id} data-color={c.color} className={bulkCat === c.id ? 'on' : undefined} onClick={() => setBulkCat(c.id)}>
+              {c.name}
+            </button>
+          ))}
+          <button type="button" role="radio" aria-checked={bulkCat === ''} className={bulkCat === '' ? 'on' : undefined} onClick={() => setBulkCat('')}>
+            No category
+          </button>
+        </div>
+      </Sheet>
+
+      <Sheet open={moreOpen} title={`${n} selected`} onClose={() => setMoreOpen(false)}>
+        <div className="settings-group">
+          <button type="button" className="settings-row" onClick={exportSelected}>
+            <span>
+              Export as .vcf
+              <small>To add them to another app</small>
+            </span>
+          </button>
+          <button type="button" className="settings-row danger" onClick={bulkDelete}>
+            <span>
+              Delete {n} contact{n === 1 ? '' : 's'}
+            </span>
+          </button>
+        </div>
       </Sheet>
     </>
   );

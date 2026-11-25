@@ -8,7 +8,7 @@ This is the **only** web app in the repository. Build output goes to `dist/` for
 
 - **Master contacts list** — search, category + tag chips, multi-select, bulk actions
 - **Categories & tag groups** — one primary category; tags organized into groups
-- **Directories** — smart lists (editable tags/match) or saved selections
+- **Lists** — smart lists (editable tags/match) or saved selections
 - **PDF** — themes, orientation, card columns, header/footer, cover, preview
 - **Import / export** — `.vcf` / `.csv` with preview, JSON backup/restore
 - **Optional cloud sync** — Supabase email/password (see below)
